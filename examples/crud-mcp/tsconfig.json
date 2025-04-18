@@ -23,14 +23,8 @@
 		/* Enable error reporting in type-checked JavaScript files. */
 		"checkJs": false,
 
-		/* Emit declaration files */
-		"declaration": true,
-		/* Specify the output directory for emitted files */
-		"outDir": "./dist",
-		/* Generate source maps for better debugging experience */
-		"sourceMap": true,
-		/* Don't disable emitting files */
-		"noEmit": false,
+		/* Disable emitting files from a compilation. */
+		"noEmit": true,
 
 		/* Ensure that each file can be safely transpiled without relying on other imports. */
 		"isolatedModules": true,
@@ -45,6 +39,6 @@
 		/* Skip type checking all .d.ts files. */
 		"skipLibCheck": true
 	},
-	"exclude": ["test", "dist"],
-	"include": ["worker-configuration.d.ts", "src/**/*.ts", "test/index.ts"]
+	"exclude": ["test", "node_modules/mcp/**/*.ts"],
+	"include": ["worker-configuration.d.ts", "src/**/*.ts"]
 }

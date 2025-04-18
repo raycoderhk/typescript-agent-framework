@@ -10,9 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "yarn workspaces run build",
     "test": "yarn workspaces run test"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.9.0"
   }
 }
