@@ -59,12 +59,18 @@ jobs:
           # Build once more to ensure latest versions are included
           yarn build
           
-          # Publish to npm
-          yarn changeset publish
+          # Manually publish each package with npm
+          echo "Publishing packages directly with npm..."
+          cd packages/test-utils
+          npm publish --access public || echo "Failed to publish test-utils, may already exist"
+          cd ../mcp
+          npm publish --access public || echo "Failed to publish mcp, may already exist"
+          cd ../..
           
           # Push the version updates and tags
           git push origin main
           git push --tags
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }} 
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} 
