@@ -13,7 +13,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-      pull-requests: write
       id-token: write
     steps:
       - name: Checkout
@@ -42,14 +41,30 @@ jobs:
 
       - name: Test packages
         run: yarn test
+      
+      - name: Setup Git User
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          publish: yarn changeset publish
-          commit: "chore(release): version packages"
-          title: "chore(release): version packages"
+      - name: Version and Publish
+        run: |
+          # Apply changesets (update version numbers)
+          yarn changeset version
+          
+          # Commit the version updates
+          git add .
+          git commit -m "chore(release): version packages" || echo "No changes to commit"
+          
+          # Build once more to ensure latest versions are included
+          yarn build
+          
+          # Publish to npm
+          yarn changeset publish
+          
+          # Push the version updates and tags
+          git push origin main
+          git push --tags
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }} 
