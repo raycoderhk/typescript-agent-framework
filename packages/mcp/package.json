@@ -21,7 +21,8 @@
 		"start": "wrangler dev",
 		"test": "vitest run",
 		"cf-typegen": "wrangler types --include-runtime=false",
-		"semantic-release": "semantic-release"
+		"semantic-release": "semantic-release",
+		"postversion": "echo 'Version updated to' $npm_package_version"
 	},
 	"keywords": [
 		"mcp",

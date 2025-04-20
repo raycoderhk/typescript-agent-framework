@@ -92,7 +92,7 @@ jobs:
               cp ../../.github/release-template.json .releaserc.json
             fi
             
-            # For test-utils package, directly set the version to 0.1.0
+            # For test-utils package, directly set the version to 0.1.x
             if [[ "$PKG" == "packages/test-utils" ]]; then
               # Force version to 0.1.x
               VERSION_PREFIX="0.1."
@@ -118,6 +118,41 @@ jobs:
               npm version $NEW_VERSION --no-git-tag-version --allow-same-version
               
               echo "Explicitly setting test-utils version to $NEW_VERSION"
+              # Run semantic-release with the explicit version
+              RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
+            # For MCP package, correctly handle versioning
+            elif [[ "$PKG" == "packages/mcp" ]]; then
+              # Get preferred version pattern based on current version
+              if [[ "$CURRENT_VERSION" == 1.0.* ]]; then
+                VERSION_PREFIX="1.0."
+              else
+                # Extract major.minor prefix
+                VERSION_PREFIX=$(echo $CURRENT_VERSION | sed -E 's/([0-9]+\.[0-9]+)\..*/\1./')
+              fi
+              
+              # Check if there's a previous release
+              PREV_RELEASE=$(npm view @xava-labs/mcp versions --json 2>/dev/null || echo "[]")
+              
+              # Extract version numbers matching current pattern
+              PATTERN_ESCAPE=$(echo $VERSION_PREFIX | sed 's/\./\\./g')
+              PATCH_VERSIONS=$(echo $PREV_RELEASE | jq -r ".[] | select(startswith(\"$VERSION_PREFIX\"))" 2>/dev/null | sed "s/$PATTERN_ESCAPE//" || echo "")
+              
+              # Find highest patch number
+              HIGHEST_PATCH=0
+              for ver in $PATCH_VERSIONS; do
+                if [[ $ver =~ ^[0-9]+$ && $ver -gt $HIGHEST_PATCH ]]; then
+                  HIGHEST_PATCH=$ver
+                fi
+              done
+              
+              # Calculate next patch version
+              NEXT_PATCH=$((HIGHEST_PATCH + 1))
+              NEW_VERSION="${VERSION_PREFIX}${NEXT_PATCH}"
+              
+              # Update package.json with the new version
+              npm version $NEW_VERSION --no-git-tag-version --allow-same-version
+              
+              echo "Explicitly setting mcp version to $NEW_VERSION"
               # Run semantic-release with the explicit version
               RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
             # If version starts with 0, force semantic-release to respect that  
