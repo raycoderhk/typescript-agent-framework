@@ -93,7 +93,12 @@ jobs:
             fi
             
             # Run semantic-release for the package with explicit branch config
-            RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
+            # If version starts with 0, force semantic-release to respect that
+            if [[ "$CURRENT_VERSION" == 0.* ]]; then
+              RELEASE_OUTPUT=$(npx semantic-release --branches main --initial-version $CURRENT_VERSION 2>&1 || true)
+            else
+              RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
+            fi
             echo "$RELEASE_OUTPUT"
             
             # Extract new version if available

@@ -26,5 +26,6 @@
       "successComment": false,
       "failComment": false
     }]
-  ]
+  ],
+  "tagFormat": "test-utils-v${version}"
 } 
