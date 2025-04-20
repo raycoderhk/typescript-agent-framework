@@ -90,6 +90,8 @@ jobs:
             echo "Publishing package: $PKG"
             cd $PKG
             
+            # Extract package name from package.json
+            PACKAGE_NAME=$(node -p "require('./package.json').name")
             # Get current version
             CURRENT_VERSION=$(node -p "require('./package.json').version")
             
@@ -99,39 +101,47 @@ jobs:
               cp ../../.github/release-template.json .releaserc.json
             fi
             
-            # For test-utils package, handle 0.x versioning 
-            if [[ "$PKG" == "packages/test-utils" ]]; then
-              # Check if package exists on npm yet
-              PACKAGE_EXISTS=$(npm view @xava-labs/test-utils version 2>/dev/null || echo "")
-              
-              if [[ -z "$PACKAGE_EXISTS" ]]; then
-                # If package doesn't exist yet, force first release at 0.1.0
-                npm version 0.1.0 --no-git-tag-version --allow-same-version
-                echo "First-time publishing test-utils at version 0.1.0"
-                RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci --first-release 2>&1 || true)
+            # Unified versioning logic for all packages
+            # Check if package exists on npm yet
+            PACKAGE_EXISTS=$(npm view $PACKAGE_NAME version 2>/dev/null || echo "")
+            
+            if [[ -z "$PACKAGE_EXISTS" ]]; then
+              # First-time publishing
+              if [[ "$CURRENT_VERSION" == 0.* ]]; then
+                # Keep the 0.x.x version for pre-1.0 packages
+                echo "First-time publishing $PACKAGE_NAME at version $CURRENT_VERSION"
               else
-                # Get existing versions
-                PREV_RELEASE=$(npm view @xava-labs/test-utils versions --json 2>/dev/null || echo "[]")
+                # For packages with version >= 1.0.0, ensure we start at proper semver
+                if [[ "$CURRENT_VERSION" != 1.0.0 ]]; then
+                  npm version 1.0.0 --no-git-tag-version --allow-same-version
+                  echo "First-time publishing $PACKAGE_NAME - normalizing to version 1.0.0"
+                else
+                  echo "First-time publishing $PACKAGE_NAME at version 1.0.0"
+                fi
+              fi
+              RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci --first-release 2>&1 || true)
+            else
+              # Package exists - determine version increment
+              # Get existing versions
+              PREV_RELEASE=$(npm view $PACKAGE_NAME versions --json 2>/dev/null || echo "[]")
+              
+              # Determine if we need to bump version based on commit history
+              BUMP_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "The next release version is" | wc -l)
+              
+              if [[ $BUMP_TYPE -gt 0 ]]; then
+                # Get the recommended bump type based on commits
+                NEXT_VERSION_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "release type: \\w\\+" | cut -d " " -f 3)
                 
-                # Determine if we need to bump minor or patch based on commit history
-                BUMP_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "The next release version is" | wc -l)
+                # Current version components
+                CURRENT_MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+                CURRENT_MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+                CURRENT_PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
                 
-                if [[ $BUMP_TYPE -gt 0 ]]; then
-                  # Get the recommended bump type based on commits
-                  NEXT_VERSION_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "release type: \\w\\+" | cut -d " " -f 3)
-                  
-                  # Current version components
-                  CURRENT_MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-                  CURRENT_MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-                  CURRENT_PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-                  
-                  # Calculate next version
-                  if [[ "$NEXT_VERSION_TYPE" == "major" ]]; then
-                    # For a major bump in 0.x, we increment the minor instead (0.x.y -> 0.[x+1].0)
-                    NEXT_MINOR=$((CURRENT_MINOR + 1))
-                    NEXT_VERSION="0.$NEXT_MINOR.0"
-                  elif [[ "$NEXT_VERSION_TYPE" == "minor" ]]; then
-                    # For a minor bump in 0.x, we also increment the minor (0.x.y -> 0.[x+1].0)
+                # Calculate next version properly depending on current major version
+                if [[ "$CURRENT_MAJOR" == "0" ]]; then
+                  # For 0.x versions
+                  if [[ "$NEXT_VERSION_TYPE" == "major" || "$NEXT_VERSION_TYPE" == "minor" ]]; then
+                    # For a major or minor bump in 0.x, increment the minor (0.x.y -> 0.[x+1].0)
                     NEXT_MINOR=$((CURRENT_MINOR + 1))
                     NEXT_VERSION="0.$NEXT_MINOR.0"
                   else
@@ -139,122 +149,29 @@ jobs:
                     NEXT_PATCH=$((CURRENT_PATCH + 1))
                     NEXT_VERSION="0.$CURRENT_MINOR.$NEXT_PATCH"
                   fi
-                  
-                  # Set this version in package.json
-                  npm version $NEXT_VERSION --no-git-tag-version --allow-same-version
-                  echo "Bumping test-utils version to $NEXT_VERSION based on semantic-release recommendation"
-                  RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
                 else
-                  # No changes requiring version bump
-                  echo "No changes detected requiring version bump for test-utils"
-                  RELEASE_OUTPUT="No changes requiring release detected"
-                fi
-              fi
-            # For MCP package, correctly handle versioning
-            elif [[ "$PKG" == "packages/mcp" ]]; then
-              # Check if package exists on npm yet
-              PACKAGE_EXISTS=$(npm view @xava-labs/mcp version 2>/dev/null || echo "")
-              
-              if [[ -z "$PACKAGE_EXISTS" ]]; then
-                # If package doesn't exist yet, determine if we want to start at 1.0.0 or 0.1.0
-                if [[ "$CURRENT_VERSION" == 1.* ]]; then
-                  npm version 1.0.0 --no-git-tag-version --allow-same-version
-                  echo "First-time publishing mcp at version 1.0.0"
-                else 
-                  npm version 0.1.0 --no-git-tag-version --allow-same-version
-                  echo "First-time publishing mcp at version 0.1.0"
-                fi
-                RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci --first-release 2>&1 || true)
-              else
-                # Get existing versions
-                PREV_RELEASE=$(npm view @xava-labs/mcp versions --json 2>/dev/null || echo "[]")
-                
-                # Determine if we need to bump version based on commit history
-                BUMP_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "The next release version is" | wc -l)
-                
-                if [[ $BUMP_TYPE -gt 0 ]]; then
-                  # Get the recommended bump type based on commits
-                  NEXT_VERSION_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "release type: \\w\\+" | cut -d " " -f 3)
-                  
-                  # Current version components
-                  CURRENT_MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-                  CURRENT_MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-                  CURRENT_PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-                  
-                  # Calculate next version properly depending on current major version
-                  if [[ "$CURRENT_MAJOR" == "0" ]]; then
-                    # For 0.x versions
-                    if [[ "$NEXT_VERSION_TYPE" == "major" || "$NEXT_VERSION_TYPE" == "minor" ]]; then
-                      # For a major or minor bump in 0.x, increment the minor (0.x.y -> 0.[x+1].0)
-                      NEXT_MINOR=$((CURRENT_MINOR + 1))
-                      NEXT_VERSION="0.$NEXT_MINOR.0"
-                    else
-                      # For a patch bump, increment patch (0.x.y -> 0.x.[y+1])
-                      NEXT_PATCH=$((CURRENT_PATCH + 1))
-                      NEXT_VERSION="0.$CURRENT_MINOR.$NEXT_PATCH"
-                    fi
+                  # For 1.x and above, follow standard semver
+                  if [[ "$NEXT_VERSION_TYPE" == "major" ]]; then
+                    NEXT_MAJOR=$((CURRENT_MAJOR + 1))
+                    NEXT_VERSION="$NEXT_MAJOR.0.0"
+                  elif [[ "$NEXT_VERSION_TYPE" == "minor" ]]; then
+                    NEXT_MINOR=$((CURRENT_MINOR + 1))
+                    NEXT_VERSION="$CURRENT_MAJOR.$NEXT_MINOR.0"
                   else
-                    # For 1.x and above, follow standard semver
-                    if [[ "$NEXT_VERSION_TYPE" == "major" ]]; then
-                      NEXT_MAJOR=$((CURRENT_MAJOR + 1))
-                      NEXT_VERSION="$NEXT_MAJOR.0.0"
-                    elif [[ "$NEXT_VERSION_TYPE" == "minor" ]]; then
-                      NEXT_MINOR=$((CURRENT_MINOR + 1))
-                      NEXT_VERSION="$CURRENT_MAJOR.$NEXT_MINOR.0"
-                    else
-                      NEXT_PATCH=$((CURRENT_PATCH + 1))
-                      NEXT_VERSION="$CURRENT_MAJOR.$CURRENT_MINOR.$NEXT_PATCH"
-                    fi
+                    NEXT_PATCH=$((CURRENT_PATCH + 1))
+                    NEXT_VERSION="$CURRENT_MAJOR.$CURRENT_MINOR.$NEXT_PATCH"
                   fi
-                  
-                  # Set this version in package.json
-                  npm version $NEXT_VERSION --no-git-tag-version --allow-same-version
-                  echo "Bumping mcp version to $NEXT_VERSION based on semantic-release recommendation"
-                  RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
-                else
-                  # No changes requiring version bump
-                  echo "No changes detected requiring version bump for mcp"
-                  RELEASE_OUTPUT="No changes requiring release detected"
-                fi
-              fi
-            # If version starts with 0, force semantic-release to respect that  
-            elif [[ "$CURRENT_VERSION" == 0.* ]]; then
-              # Use dryRun first to determine the next version
-              NEXT_VERSION=$(npx semantic-release --dry-run --branches main 2>&1 | grep -oP 'The next release version is \K[0-9]+\.[0-9]+\.[0-9]+' || echo "")
-              
-              if [[ -n "$NEXT_VERSION" ]]; then
-                # Now modify package.json to have a version that's one less than the determined version
-                MAJOR=$(echo $NEXT_VERSION | cut -d. -f1)
-                MINOR=$(echo $NEXT_VERSION | cut -d. -f2)
-                PATCH=$(echo $NEXT_VERSION | cut -d. -f3)
-                
-                if [[ $PATCH -gt 0 ]]; then
-                  PATCH=$((PATCH - 1))
-                elif [[ $MINOR -gt 0 ]]; then
-                  MINOR=$((MINOR - 1))
-                  PATCH=9
-                else
-                  MAJOR=$((MAJOR - 1))
-                  MINOR=9
-                  PATCH=9
                 fi
                 
-                PREV_VERSION="$MAJOR.$MINOR.$PATCH"
-                
-                # Update package.json with one version behind
-                npm version $PREV_VERSION --no-git-tag-version
-                echo "Setting version to $PREV_VERSION to force next version as $NEXT_VERSION"
-                
-                # Run semantic-release
-                RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
+                # Set this version in package.json
+                npm version $NEXT_VERSION --no-git-tag-version --allow-same-version
+                echo "Bumping $PACKAGE_NAME version to $NEXT_VERSION based on semantic-release recommendation"
+                RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
               else
-                # Fallback if can't determine next version
-                RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
+                # No changes requiring version bump
+                echo "No changes detected requiring version bump for $PACKAGE_NAME"
+                RELEASE_OUTPUT="No changes requiring release detected"
               fi
-            # For all other packages, use standard semantic-release
-            else
-              echo "Processing standard package with version $CURRENT_VERSION"
-              RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
             fi
             echo "$RELEASE_OUTPUT"
             
