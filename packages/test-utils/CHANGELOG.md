@@ -1,7 +1,7 @@
 # @xava-labs/test-utils
 
-## 1.0.1
+## 0.1.0
 
 ### Patch Changes
 
-- 2600c5f: Initial release with Changesets
+- Reset version to 0.1.0 to follow SemVer for pre-1.0 development
