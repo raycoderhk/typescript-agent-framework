@@ -1,6 +1,6 @@
 {
 	"name": "@xava-labs/mcp",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"description": "Model Context Protocol (MCP) server implementation for Cloudflare Workers",
 	"type": "module",
 	"main": "dist/index.js",
@@ -20,9 +20,7 @@
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"test": "vitest run",
-		"cf-typegen": "wrangler types --include-runtime=false",
-		"semantic-release": "semantic-release",
-		"postversion": "echo 'Version updated to' $npm_package_version"
+		"cf-typegen": "wrangler types --include-runtime=false"
 	},
 	"keywords": [
 		"mcp",

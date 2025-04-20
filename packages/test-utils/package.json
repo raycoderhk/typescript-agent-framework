@@ -26,7 +26,6 @@
     "build": "tsc",
     "test": "echo Success",
     "prepublishOnly": "yarn build",
-    "prerelease": "npm version 0.1.0 --no-git-tag-version --allow-same-version",
     "postversion": "echo 'Version updated to' $npm_package_version"
   },
   "dependencies": {
