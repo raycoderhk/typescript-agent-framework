@@ -25,7 +25,8 @@
   "scripts": {
     "build": "tsc",
     "test": "echo Success",
-    "prepublishOnly": "yarn build"
+    "prepublishOnly": "yarn build",
+    "postversion": "echo 'Version updated to' $npm_package_version"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.9.0"

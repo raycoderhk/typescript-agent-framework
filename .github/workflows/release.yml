@@ -93,9 +93,32 @@ jobs:
             fi
             
             # For test-utils package, directly set the version to 0.1.0
-            if [[ "$PKG" == "packages/test-utils" && "$CURRENT_VERSION" == "0.1.0" ]]; then
-              # Create a temporary package.json with 0.1.0 version
-              echo "Force test-utils to release starting from 0.1.0"
+            if [[ "$PKG" == "packages/test-utils" ]]; then
+              # Force version to 0.1.x
+              VERSION_PREFIX="0.1."
+              # Check if there's a previous release
+              PREV_RELEASE=$(npm view @xava-labs/test-utils versions --json 2>/dev/null || echo "[]")
+              
+              # Extract version numbers matching 0.1.x pattern
+              PATCH_VERSIONS=$(echo $PREV_RELEASE | jq -r '.[] | select(startswith("0.1."))' 2>/dev/null | sed 's/0\.1\.//' || echo "")
+              
+              # Find highest patch number
+              HIGHEST_PATCH=0
+              for ver in $PATCH_VERSIONS; do
+                if [[ $ver =~ ^[0-9]+$ && $ver -gt $HIGHEST_PATCH ]]; then
+                  HIGHEST_PATCH=$ver
+                fi
+              done
+              
+              # Calculate next patch version
+              NEXT_PATCH=$((HIGHEST_PATCH + 1))
+              NEW_VERSION="${VERSION_PREFIX}${NEXT_PATCH}"
+              
+              # Update package.json with the new version
+              npm version $NEW_VERSION --no-git-tag-version --allow-same-version
+              
+              echo "Explicitly setting test-utils version to $NEW_VERSION"
+              # Run semantic-release with the explicit version
               RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
             # If version starts with 0, force semantic-release to respect that  
             elif [[ "$CURRENT_VERSION" == 0.* ]]; then
