@@ -24,8 +24,10 @@
     }],
     ["@semantic-release/github", {
       "successComment": false,
-      "failComment": false
+      "failComment": false,
+      "assets": []
     }]
   ],
-  "tagFormat": "test-utils-v${version}"
+  "tagFormat": "test-utils-v${version}",
+  "preset": "angular"
 } 

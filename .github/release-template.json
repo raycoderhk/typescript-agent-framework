@@ -24,7 +24,8 @@
     }],
     ["@semantic-release/github", {
       "successComment": false,
-      "failComment": false
+      "failComment": false,
+      "assets": []
     }]
   ]
 } 

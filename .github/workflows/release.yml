@@ -92,10 +92,45 @@ jobs:
               cp ../../.github/release-template.json .releaserc.json
             fi
             
-            # Run semantic-release for the package with explicit branch config
-            # If version starts with 0, force semantic-release to respect that
-            if [[ "$CURRENT_VERSION" == 0.* ]]; then
-              RELEASE_OUTPUT=$(npx semantic-release --branches main --initial-version $CURRENT_VERSION 2>&1 || true)
+            # For test-utils package, directly set the version to 0.1.0
+            if [[ "$PKG" == "packages/test-utils" && "$CURRENT_VERSION" == "0.1.0" ]]; then
+              # Create a temporary package.json with 0.1.0 version
+              echo "Force test-utils to release starting from 0.1.0"
+              RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
+            # If version starts with 0, force semantic-release to respect that  
+            elif [[ "$CURRENT_VERSION" == 0.* ]]; then
+              # Use dryRun first to determine the next version
+              NEXT_VERSION=$(npx semantic-release --dry-run --branches main 2>&1 | grep -oP 'The next release version is \K[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+              
+              if [[ -n "$NEXT_VERSION" ]]; then
+                # Now modify package.json to have a version that's one less than the determined version
+                MAJOR=$(echo $NEXT_VERSION | cut -d. -f1)
+                MINOR=$(echo $NEXT_VERSION | cut -d. -f2)
+                PATCH=$(echo $NEXT_VERSION | cut -d. -f3)
+                
+                if [[ $PATCH -gt 0 ]]; then
+                  PATCH=$((PATCH - 1))
+                elif [[ $MINOR -gt 0 ]]; then
+                  MINOR=$((MINOR - 1))
+                  PATCH=9
+                else
+                  MAJOR=$((MAJOR - 1))
+                  MINOR=9
+                  PATCH=9
+                fi
+                
+                PREV_VERSION="$MAJOR.$MINOR.$PATCH"
+                
+                # Update package.json with one version behind
+                npm version $PREV_VERSION --no-git-tag-version
+                echo "Setting version to $PREV_VERSION to force next version as $NEXT_VERSION"
+                
+                # Run semantic-release
+                RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
+              else
+                # Fallback if can't determine next version
+                RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
+              fi
             else
               RELEASE_OUTPUT=$(npx semantic-release --branches main 2>&1 || true)
             fi
