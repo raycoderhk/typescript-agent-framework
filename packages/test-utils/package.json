@@ -39,9 +39,6 @@
     "typescript": "^5.8.3",
     "vitest": "3.0.x"
   },
-  "peerDependencies": {
-    "@cloudflare/workers-types": "^4.20250410.0"
-  },
   "publishConfig": {
     "access": "public"
   }
