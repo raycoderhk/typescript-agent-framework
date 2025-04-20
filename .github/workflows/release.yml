@@ -4,35 +4,22 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'packages/**'
-      - '.github/workflows/release.yml'
   workflow_dispatch:
-    inputs:
-      force_release:
-        description: 'Force release of packages (comma-separated, e.g. "mcp,test-utils")'
-        required: false
-        type: string
-      force_version:
-        description: 'Force specific version (leave empty to auto-increment)'
-        required: false
-        type: string
 
 jobs:
   release:
+    name: Release
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
-      id-token: write
-    timeout-minutes: 15
-    runs-on: ubuntu-latest
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
+          
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -40,211 +27,27 @@ jobs:
           cache: 'yarn'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
       - name: Configure npm
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
           npm config set access public
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
 
       - name: Build packages
         run: yarn build
 
       - name: Test packages
         run: yarn test
-      
-      - name: Detect changed packages
-        id: changed_packages
-        run: |
-          # Create a JSON array of packages
-          PACKAGES_JSON=$(find packages -type f -name "package.json" -not -path "*/node_modules/*" | 
-                          grep -o 'packages/[^/]*' | 
-                          sort | 
-                          uniq | 
-                          jq -R -s -c 'split("\n")[:-1]')
-          echo "packages=$PACKAGES_JSON" >> $GITHUB_OUTPUT
           
-          # Also create a space-separated list for shell usage
-          CHANGED_PACKAGES=$(find packages -type f -name "package.json" -not -path "*/node_modules/*" | 
-                            grep -o 'packages/[^/]*' | 
-                            sort | 
-                            uniq)
-          
-          # Format for summary
-          echo "## Packages to be released" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          for PKG in $CHANGED_PACKAGES; do
-            echo "- $PKG" >> $GITHUB_STEP_SUMMARY
-          done
-          echo "" >> $GITHUB_STEP_SUMMARY
-      
-      - name: Setup Git
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-
-      - name: Release with semantic-release
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: yarn changeset publish
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHANGED_PACKAGES: ${{ steps.changed_packages.outputs.packages }}
-          FORCE_RELEASE: ${{ github.event.inputs.force_release }}
-          FORCE_VERSION: ${{ github.event.inputs.force_version }}
-        run: |
-          # Convert JSON array back to space-separated list for shell processing
-          PACKAGES_LIST=$(echo '${{ steps.changed_packages.outputs.packages }}' | jq -r 'join(" ")')
-          
-          # Release each changed package
-          RELEASE_SUMMARY=""
-          for PKG in $PACKAGES_LIST; do
-            echo "Publishing package: $PKG"
-            cd $PKG
-            
-            # Extract package name from package.json
-            PACKAGE_NAME=$(node -p "require('./package.json').name")
-            # Get current version
-            CURRENT_VERSION=$(node -p "require('./package.json').version")
-            
-            # Check if .releaserc.json exists, create if not
-            if [ ! -f .releaserc.json ]; then
-              echo "Creating .releaserc.json from template"
-              cp ../../.github/release-template.json .releaserc.json
-            fi
-            
-            # Check if this package is in the FORCE_RELEASE list
-            PACKAGE_SHORT_NAME=$(echo $PKG | sed 's|packages/||')
-            FORCE_THIS_PACKAGE=false
-            if [[ -n "$FORCE_RELEASE" && "$FORCE_RELEASE" == *"$PACKAGE_SHORT_NAME"* ]]; then
-              FORCE_THIS_PACKAGE=true
-              echo "Force release enabled for $PACKAGE_NAME"
-            fi
-            
-            # Unified versioning logic for all packages
-            # Check if package exists on npm yet
-            PACKAGE_EXISTS=$(npm view $PACKAGE_NAME version 2>/dev/null || echo "")
-            
-            if [[ -z "$PACKAGE_EXISTS" || "$FORCE_THIS_PACKAGE" == "true" ]]; then
-              # First-time publishing or forced release
-              if [[ -n "$FORCE_VERSION" ]]; then
-                # Use forced version if provided
-                NEW_VERSION="$FORCE_VERSION"
-                npm version $NEW_VERSION --no-git-tag-version --allow-same-version
-                echo "Forcing version $NEW_VERSION for $PACKAGE_NAME"
-              elif [[ "$CURRENT_VERSION" == 0.* ]]; then
-                # For packages starting with 0.x.x, extract and increment the patch version
-                MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-                MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-                PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-                NEXT_PATCH=$((PATCH + 1))
-                NEW_VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
-                npm version $NEW_VERSION --no-git-tag-version
-                echo "Incrementing version to $NEW_VERSION for $PACKAGE_NAME"
-              else
-                # For packages with version >= 1.0.0, increment patch
-                MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-                MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-                PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-                NEXT_PATCH=$((PATCH + 1))
-                NEW_VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
-                npm version $NEW_VERSION --no-git-tag-version
-                echo "Incrementing version to $NEW_VERSION for $PACKAGE_NAME"
-              fi
-              
-              if [[ "$FORCE_THIS_PACKAGE" == "true" ]]; then
-                # Force publish without checking for changes
-                echo "Running semantic-release with force flag for $PACKAGE_NAME"
-                RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
-              else
-                # First-time publishing
-                echo "First-time publishing $PACKAGE_NAME at version $CURRENT_VERSION"
-                RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci --first-release 2>&1 || true)
-              fi
-            else
-              # Package exists - determine version increment
-              # Get existing versions
-              PREV_RELEASE=$(npm view $PACKAGE_NAME versions --json 2>/dev/null || echo "[]")
-              
-              # Determine if we need to bump version based on commit history
-              BUMP_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "The next release version is" | wc -l)
-              
-              if [[ $BUMP_TYPE -gt 0 || "$FORCE_THIS_PACKAGE" == "true" ]]; then
-                # Changes detected or force flag enabled
-                if [[ -n "$FORCE_VERSION" ]]; then
-                  # Use forced version if provided
-                  NEW_VERSION="$FORCE_VERSION"
-                else
-                  # Try to get recommended bump type based on commits
-                  NEXT_VERSION_TYPE=$(npx semantic-release --dry-run --branches main 2>&1 | grep -o "release type: \\w\\+" | cut -d " " -f 3 || echo "patch")
-                  
-                  # Default to patch if we couldn't determine the type
-                  if [[ -z "$NEXT_VERSION_TYPE" ]]; then
-                    NEXT_VERSION_TYPE="patch"
-                  fi
-                  
-                  # Current version components
-                  CURRENT_MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
-                  CURRENT_MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
-                  CURRENT_PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
-                  
-                  # Calculate next version properly depending on current major version
-                  if [[ "$CURRENT_MAJOR" == "0" ]]; then
-                    # For 0.x versions
-                    if [[ "$NEXT_VERSION_TYPE" == "major" || "$NEXT_VERSION_TYPE" == "minor" || "$FORCE_THIS_PACKAGE" == "true" ]]; then
-                      # For a major or minor bump in 0.x, increment the minor (0.x.y -> 0.[x+1].0)
-                      NEXT_MINOR=$((CURRENT_MINOR + 1))
-                      NEW_VERSION="0.$NEXT_MINOR.0"
-                    else
-                      # For a patch bump, increment patch (0.x.y -> 0.x.[y+1])
-                      NEXT_PATCH=$((CURRENT_PATCH + 1))
-                      NEW_VERSION="0.$CURRENT_MINOR.$NEXT_PATCH"
-                    fi
-                  else
-                    # For 1.x and above, follow standard semver
-                    if [[ "$NEXT_VERSION_TYPE" == "major" ]]; then
-                      NEXT_MAJOR=$((CURRENT_MAJOR + 1))
-                      NEW_VERSION="$NEXT_MAJOR.0.0"
-                    elif [[ "$NEXT_VERSION_TYPE" == "minor" ]]; then
-                      NEXT_MINOR=$((CURRENT_MINOR + 1))
-                      NEW_VERSION="$CURRENT_MAJOR.$NEXT_MINOR.0"
-                    else
-                      NEXT_PATCH=$((CURRENT_PATCH + 1))
-                      NEW_VERSION="$CURRENT_MAJOR.$CURRENT_MINOR.$NEXT_PATCH"
-                    fi
-                  fi
-                fi
-                
-                # Set this version in package.json
-                npm version $NEW_VERSION --no-git-tag-version --allow-same-version
-                echo "Bumping $PACKAGE_NAME version to $NEW_VERSION"
-                RELEASE_OUTPUT=$(npx semantic-release --branches main --no-ci 2>&1 || true)
-              else
-                # No changes requiring version bump and not forcing
-                echo "No changes detected requiring version bump for $PACKAGE_NAME"
-                RELEASE_OUTPUT="No changes requiring release detected"
-              fi
-            fi
-            echo "$RELEASE_OUTPUT"
-            
-            # Extract new version if available
-            if echo "$RELEASE_OUTPUT" | grep -q "Publishing version"; then
-              NEW_VERSION=$(echo "$RELEASE_OUTPUT" | grep "Publishing version" | sed -E 's/.*Publishing version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-              echo "Successfully published $PKG@$NEW_VERSION (was $CURRENT_VERSION)"
-              RELEASE_SUMMARY="$RELEASE_SUMMARY\n### $PKG\n- Published: v$NEW_VERSION (was v$CURRENT_VERSION)\n"
-            else
-              echo "No new version to release for $PKG"
-              RELEASE_SUMMARY="$RELEASE_SUMMARY\n### $PKG\n- No release needed (current: v$CURRENT_VERSION)\n"
-            fi
-            
-            cd ../../
-          done
-          
-          # Output summary
-          echo -e "$RELEASE_SUMMARY" >> $GITHUB_STEP_SUMMARY
-      
-      - name: Output release status
-        run: |
-          echo "✅ Release process completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Packages have been published to npm." >> $GITHUB_STEP_SUMMARY 
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }} 
