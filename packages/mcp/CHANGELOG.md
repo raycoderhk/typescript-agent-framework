@@ -1,5 +1,11 @@
 # @xava-labs/mcp
 
+## 0.2.0
+
+### Minor Changes
+
+- 0e0ff2d: Fixing versions to align them
+
 ## 0.1.1
 
 ### Patch Changes

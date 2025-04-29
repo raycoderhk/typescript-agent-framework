@@ -1,5 +1,11 @@
 # @xava-labs/agent
 
+## 0.2.0
+
+### Minor Changes
+
+- 0e0ff2d: Fixing versions to align them
+
 ## 0.0.2
 
 ### Patch Changes
