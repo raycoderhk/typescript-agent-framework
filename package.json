@@ -1,11 +1,8 @@
 {
-  "name": "typescript-agent-vibework",
+  "name": "typescript-agent-framework",
   "version": "0.1.0",
-  "main": "index.js",
-  "repository": "https://github.com/xava-labs/typescript-agent-vibework.git",
-  "author": "disturbing <hello@xavalabs.com>",
-  "license": "MIT",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*"
   ],
@@ -17,6 +14,7 @@
     "publish": "changeset publish"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.29.2"
+    "@changesets/cli": "^2.29.2",
+    "@modelcontextprotocol/sdk": "^1.10.2"
   }
 }
