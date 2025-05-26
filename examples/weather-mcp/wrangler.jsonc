@@ -1,0 +1,22 @@
+{
+	"name": "weather-mcp",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-05-26",
+	"migrations": [
+		{
+			"new_sqlite_classes": ["WeatherMCP"],
+			"tag": "v1"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"class_name": "WeatherMCP",
+				"name": "WEATHER_MCP"
+			}
+		]
+	},
+	"observability": {
+		"enabled": true
+	}
+}
