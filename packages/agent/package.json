@@ -28,7 +28,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"prepare": "pnpm run build",
+		"prepare": "npm run build",
 		"test": "echo No Tests",
 		"cf-typegen": "wrangler types"
 	},
