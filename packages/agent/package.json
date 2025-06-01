@@ -5,12 +5,20 @@
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
-	"files": [
-		"dist",
-		"README.md",
-		"LICENSE",
-		"bin"
-	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./services": {
+			"types": "./dist/services/index.d.ts",
+			"import": "./dist/services/index.js"
+		},
+		"./aisdk": {
+			"types": "./dist/aisdk/index.d.ts",
+			"import": "./dist/aisdk/index.js"
+		}
+	},
 	"bin": {
 		"tools-registry-cli": "./bin/tools-registry-cli.js"
 	},
@@ -20,9 +28,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
+		"prepare": "pnpm run build",
 		"test": "echo No Tests",
 		"cf-typegen": "wrangler types"
 	},
@@ -41,19 +47,5 @@
 		"ai": "^4.3.9",
 		"hono": "^4.7.7",
 		"zod": "^3.24.3"
-	},
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js"
-		},
-		"./services": {
-			"types": "./dist/services/index.d.ts",
-			"import": "./dist/services/index.js"
-		},
-		"./aisdk": {
-			"types": "./dist/aisdk/index.d.ts",
-			"import": "./dist/aisdk/index.js"
-		}
 	}
 }
