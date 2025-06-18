@@ -5,7 +5,7 @@
   <p><i>Pre-Alpha: This project is in active development.</i></p>
 </div>
 
-[![Discord](https://img.shields.io/discord/1234567890?color=7289DA&label=Discord&logo=discord&logoColor=white)](https://discord.gg/acwpp6zWEc)
+[![Discord](https://img.shields.io/discord/1358691448173625468?style=flat)](https://discord.gg/acwpp6zWEc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Welcome to a new paradigm in AI development. MCP provides the foundation for building intelligent, interoperable agents that can communicate, evolve, and generate value at the edge of the network.
