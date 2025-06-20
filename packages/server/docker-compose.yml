@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-3000}
+      - DATABASE_PATH=/app/data/packages.db.sqlite
+    volumes:
+      # Mount source code for hot reloading in development
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+      # Mount data directory for SQLite persistence
+      - ./data:/app/data
+      - server_logs:/app/logs
+    restart: unless-stopped
+    command: ["yarn", "dev"]
+    networks:
+      - server_network
+    # Ensure the container user can write to mounted volumes
+    user: "1001:1001"
+
+volumes:
+  server_logs:
+
+networks:
+  server_network:
+    driver: bridge
