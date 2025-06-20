@@ -1,41 +1,28 @@
-# Use the official Node.js runtime (Debian-based, includes build tools)
 FROM node:22
 
-# Set the working directory in the container
+# Enable corepack for yarn
+RUN corepack enable
+
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and yarn.lock (if available)
+# Copy package files
 COPY package.json yarn.lock* ./
 
 # Install dependencies
 RUN yarn install --frozen-lockfile
 
-# Copy the source code
+# Copy source code
 COPY . .
 
-# Build the TypeScript application
+# Build the project
 RUN yarn build
 
-# Create data directory for SQLite database and set permissions
+# Create directory for SQLite database
 RUN mkdir -p /app/data
 
-# Create a non-root user
-RUN groupadd -g 1001 nodejs
-RUN useradd -r -u 1001 -g nodejs nodejs
+# Expose port (will be overridden by environment variable)
+EXPOSE ${PORT:-3000}
 
-# Change ownership of the app directory to the nodejs user AFTER creating data directory
-RUN chown -R nodejs:nodejs /app
-
-# Expose the port the app runs on
-EXPOSE 3000
-
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV DATABASE_PATH=/app/data/packages.db.sqlite
-
-# Switch to non-root user
-USER nodejs
-
-# Command to run the application
-CMD ["node", "dist/index.js"]
+# Start the server
+CMD ["yarn", "dev"] 

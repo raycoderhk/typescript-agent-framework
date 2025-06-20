@@ -1,53 +1,17 @@
-# Server
+# @xava-labs/server
 
-HTTP server built with Hono and TypeScript for MCP (Model Context Protocol) operations and package management.
+A WebSocket server for managing MCP (Model Context Protocol) packages with SQLite persistence.
 
 ## Features
 
-- **REST API** with Hono framework
-- **JSON validation** with Zod schemas
-- **TypeScript** with strict typing
-- **Docker** ready
-- **CORS** and logging middleware
+- 🚀 WebSocket API for MCP package management
+- 📦 SQLite database integration
+- 🧪 MCP server connection testing
+- 🐳 Docker containerized
+- ⚡ TypeScript with Node.js 22
+- 🧶 Yarn package manager
 
-## Endpoints
-
-### `GET /`
-Health check and API information.
-
-### `POST /mcp`
-Process MCP requests.
-
-```json
-{
-  "action": "string (required)",
-  "data": "any (optional)"
-}
-```
-
-### `POST /add`
-Add packages to the system.
-
-```json
-{
-  "unique-name": "my-package",
-  "command": "npm install",
-  "args": ["--save", "express"],
-  "env": {
-    "NODE_ENV": "development"
-  }
-}
-```
-
-### `GET /packages`
-List all registered packages.
-
-## Development
-
-### Prerequisites
-- Node.js 22+
-- Yarn
-- Docker
+## Quick Start
 
 ### Local Development
 
@@ -58,75 +22,300 @@ yarn install
 # Start development server
 yarn dev
 
-# Run tests
-yarn test
-
-# Build for production
-yarn build
+# Server will be available at:
+# HTTP: http://localhost:3000
+# WebSocket: ws://localhost:3000/ws
 ```
 
-### Docker Deployment
+### Docker
 
 ```bash
-# Start with docker-compose
-docker-compose up -d
+# Build and run with docker-compose
+yarn docker:dev
 
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
+# Or manually
+yarn docker:build
+yarn docker:run
 ```
 
-Server runs on `http://localhost:3000`
+## WebSocket API
 
-## API Examples
+### Connection
 
-```bash
-# Health check
-curl http://localhost:3000/
-
-# Add package
-curl -X POST http://localhost:3000/add \
-  -H "Content-Type: application/json" \
-  -d '{
-    "unique-name": "my-tool",
-    "command": "npm install",
-    "args": ["-g", "typescript"],
-    "env": {"NODE_ENV": "production"}
-  }'
-
-# MCP request
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"action": "process-data", "data": {"key": "value"}}'
-
-# List packages
-curl http://localhost:3000/packages
+```
+ws://localhost:3000/ws
 ```
 
-## Configuration
+### Message Format
 
-Environment variables:
-- `PORT` - Server port (default: 3000)
-- `NODE_ENV` - Environment mode
-
-## Error Responses
+All messages must be valid JSON with this structure:
 
 ```json
 {
-  "success": false,
-  "error": "Error description",
-  "details": []
+  "verb": "add" | "delete" | "list",
+  "data": { /* verb-specific data */ }
 }
 ```
 
-**Status Codes:** 200 (Success), 400 (Bad Request), 404 (Not Found), 409 (Conflict), 500 (Server Error)
+---
 
-## License
+## API Reference
 
-MIT
+### 📦 `add` - Add MCP Package
 
+**Request:**
+```json
+{
+  "verb": "add",
+  "data": {
+    "unique-name": "my-mcp-server",
+    "command": "npx",
+    "args": ["-y", "some-mcp-package", "--stdio"],
+    "env": {}
+  }
+}
 ```
-npx @modelcontextprotocol/inspector
+
+**Success Response:**
+```json
+{
+  "verb": "add",
+  "success": true,
+  "message": "MCP server 'my-mcp-server' added successfully",
+  "data": {
+    "id": 1,
+    "name": "my-mcp-server",
+    "command": "npx",
+    "args": ["-y", "some-mcp-package", "--stdio"],
+    "env": [],
+    "installedAt": "2024-01-01T12:00:00.000Z"
+  },
+  "capabilities": {
+    "tools": [{"name": "tool1", "description": "..."}],
+    "resources": [],
+    "prompts": []
+  },
+  "totalCapabilities": 5,
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
 ```
+
+**Error Response:**
+```json
+{
+  "verb": "add",
+  "success": false,
+  "error": "Failed to connect to MCP server",
+  "details": "Connection timeout after 10000ms",
+  "message": "The MCP server could not be reached or is not responding correctly.",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+---
+
+### 🗑️ `delete` - Remove MCP Package
+
+**Request:**
+```json
+{
+  "verb": "delete",
+  "data": {
+    "unique-name": "my-mcp-server"
+  }
+}
+```
+
+**Success Response:**
+```json
+{
+  "verb": "delete",
+  "success": true,
+  "message": "Package 'my-mcp-server' removed successfully",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+**Error Response:**
+```json
+{
+  "verb": "delete",
+  "success": false,
+  "error": "Package with unique-name 'my-mcp-server' not found",
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+---
+
+### 📋 `list` - List All Packages
+
+**Request:**
+```json
+{
+  "verb": "list"
+}
+```
+
+**Response:**
+```json
+{
+  "verb": "list",
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "my-mcp-server",
+      "command": "npx",
+      "args": ["-y", "some-mcp-package", "--stdio"],
+      "env": [],
+      "installedAt": "2024-01-01T12:00:00.000Z"
+    }
+  ],
+  "count": 1,
+  "timestamp": "2024-01-01T12:00:00.000Z"
+}
+```
+
+---
+
+## Behavior
+
+### ✅ Success Flow
+1. **`add`**: Tests MCP server connection before storing
+2. **`delete`**: Removes from database if exists
+3. **`list`**: Returns all stored packages
+
+### ❌ Error Handling
+- **Invalid JSON**: `"Invalid JSON format"`
+- **Missing verb**: `"Invalid message format"`
+- **Invalid verb**: `"Invalid message format"`
+- **Validation errors**: `"Validation failed"` with details
+- **MCP connection fails**: `"Failed to connect to MCP server"`
+- **Duplicate name**: `"Package with unique-name 'X' already exists"`
+- **Not found**: `"Package with unique-name 'X' not found"`
+
+### 🔄 MCP Connection Testing
+- Tests actual connection to MCP server before storing
+- Validates server exposes tools, resources, or prompts
+- 10-second timeout for connections
+- Only stores packages that successfully connect
+
+---
+
+## Examples
+
+### JavaScript/Node.js
+```javascript
+const WebSocket = require('ws');
+const ws = new WebSocket('ws://localhost:3000/ws');
+
+ws.on('open', () => {
+  // Add Figma MCP
+  ws.send(JSON.stringify({
+    verb: 'add',
+    data: {
+      'unique-name': 'figma-mcp',
+      command: 'npx',
+      args: ['-y', 'figma-developer-mcp', '--figma-api-key=YOUR-KEY', '--stdio'],
+      env: {}
+    }
+  }));
+});
+
+ws.on('message', (data) => {
+  const response = JSON.parse(data.toString());
+  console.log('Response:', response);
+});
+
+// List packages
+ws.send(JSON.stringify({ verb: 'list' }));
+
+// Delete package
+ws.send(JSON.stringify({
+  verb: 'delete', 
+  data: { 'unique-name': 'figma-mcp' }
+}));
+```
+
+### Browser
+```javascript
+const ws = new WebSocket('ws://localhost:3000/ws');
+
+ws.onopen = () => {
+  console.log('Connected to MCP server');
+  
+  // List existing packages
+  ws.send(JSON.stringify({ verb: 'list' }));
+};
+
+ws.onmessage = (event) => {
+  const response = JSON.parse(event.data);
+  console.log('Server response:', response);
+};
+```
+
+### curl (via websocat)
+```bash
+# Install websocat
+curl -L https://github.com/vi/websocat/releases/latest/download/websocat.x86_64-unknown-linux-musl > websocat
+chmod +x websocat
+
+# Add package
+echo '{"verb":"add","data":{"unique-name":"test","command":"echo","args":["hello"],"env":{}}}' | ./websocat ws://localhost:3000/ws
+
+# List packages  
+echo '{"verb":"list"}' | ./websocat ws://localhost:3000/ws
+
+# Delete package
+echo '{"verb":"delete","data":{"unique-name":"test"}}' | ./websocat ws://localhost:3000/ws
+```
+
+---
+
+## Configuration
+
+Configure via `.env`:
+```env
+PORT=3000
+DB_PATH=./data/packages.db
+```
+
+## Development
+
+```bash
+# Start server
+yarn dev
+
+# Run tests
+yarn test:mcp
+
+# Send test message
+yarn send
+
+# Build for production
+yarn build
+
+# Start production server
+yarn start
+```
+
+## Database
+
+- **File**: `./data/packages.db` (SQLite)
+- **Schema**: `packages` table with id, uniqueName, command, args, env, installedAt
+- **Persistence**: Database file is mounted as volume in Docker
+
+## Health Check
+
+```bash
+curl http://localhost:3000/
+```
+
+```json
+{
+  "status": "ok",
+  "message": "MCP WebSocket Server",
+  "websocket": "ws://localhost:3000/ws",
+  "version": "0.1.0"
+}

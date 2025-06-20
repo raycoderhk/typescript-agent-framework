@@ -1,53 +1,34 @@
 {
-	"name": "@xava-labs/server",
-	"version": "0.1.0",
-	"description": "HTTP server with Hono web framework for MCP and package management endpoints",
-	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"files": [
-		"dist",
-		"README.md",
-		"Dockerfile"
-	],
-	"publishConfig": {
-		"access": "public"
-	},
-	"scripts": {
-		"build": "tsc",
-		"dev": "tsx src/index.ts",
-		"start": "node dist/index.js",
-		"test": "NODE_ENV=test vitest run",
-		"test:watch": "NODE_ENV=test vitest",
-		"prepublishOnly": "yarn run build"
-	},
-	"keywords": [
-		"hono",
-		"mcp",
-		"rest-api",
-		"typescript"
-	],
-	"author": "Xava Labs",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/xava-labs/typescript-agent-framework.git"
-	},
-	"bugs": {
-		"url": "https://github.com/xava-labs/typescript-agent-framework/issues"
-	},
-	"homepage": "https://xavalabs.com",
-	"dependencies": {
-		"@hono/node-server": "^1.8.2",
-		"better-sqlite3": "^9.2.2",
-		"hono": "^4.7.6",
-		"zod": "^3.24.3"
-	},
-	"devDependencies": {
-		"@types/better-sqlite3": "^7.6.9",
-		"@types/node": "^20.9.0",
-		"tsx": "^4.7.0",
-		"typescript": "^5.8.3",
-		"vitest": "^3.0.5"
-	}
+  "name": "@xava-labs/server",
+  "version": "1.0.0",
+  "description": "Hono websocket server with SQLite integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "send": "tsx send-message.ts",
+    "test": "vitest run tests/websocket.test.ts",
+    "docker:build": "docker build -t xava-labs-server .",
+    "docker:run": "docker run --env-file .env -p ${PORT:-3000}:${PORT:-3000} -v $(pwd)/data:/app/data xava-labs-server",
+    "docker:dev": "docker-compose up --build"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.12.0",
+    "hono": "^4.6.1",
+    "sqlite3": "^5.1.6",
+    "ws": "^8.18.0",
+    "zod": "^3.22.4",
+    "@modelcontextprotocol/sdk": "^1.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "@types/sqlite3": "^3.1.11",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5",
+    "@vitest/ui": "^2.0.5"
+  },
+  "packageManager": "yarn@1.22.22"
 }
