@@ -16,5 +16,6 @@
   "devDependencies": {
     "@changesets/cli": "^2.29.2",
     "@modelcontextprotocol/sdk": "^1.10.2"
-  }
+  },
+  "packageManager": "pnpm@9.12.3+sha1.4fb96925d434c491285182acf29803bb9aa2e6e5"
 }

@@ -5,7 +5,7 @@ import { ChatHeader } from "./chat-header";
 import { DateDivider } from "./date-divider";
 import { useChat, type Message as UIMessage } from "@ai-sdk/react";
 import { usePathname } from "next/navigation";
-import { saveChat, loadChat } from "@/lib/chat-storage";
+import { saveChat, loadChat, getCurrentModelConfig } from "@/lib/storage";
 
 export interface Message {
   id: string;
@@ -22,13 +22,19 @@ interface DateDividerItem {
   date: Date;
 }
 
+interface ModelConfig {
+  provider: 'openai' | 'anthropic';
+  apiKey: string;
+  model: string;
+}
+
 export interface ChatContainerProps {
   className?: string;
   title?: string;
   onEdit?: () => void;
   showHeader?: boolean;
-  apiUrl?: string;
   initialThinking?: boolean;
+  modelConfig?: ModelConfig | null;
 }
 
 // Extract session ID from URL path
@@ -56,7 +62,7 @@ export function ChatContainer({
   title,
   onEdit,
   showHeader = true,
-  apiUrl = "http://localhost:8787/agent/chat",
+  modelConfig: propModelConfig,
 }: ChatContainerProps) {
   const pathname = usePathname();
   const [inputValue, setInputValue] = useState("");
@@ -70,7 +76,16 @@ export function ChatContainer({
   
   const [isThinking, setIsThinking] = useState(false);
   
-  // AI SDK chat hook
+  // Use prop model config or fallback to localStorage
+  const modelConfig = propModelConfig || getCurrentModelConfig();
+  const [modelError, setModelError] = useState<string | null>(null);
+  
+  // Use single unified endpoint
+  const apiEndpoint = '/api/chat';
+  
+  // AI SDK chat hook - only initialize if we have a valid model config
+  const shouldInitializeChat = !!modelConfig;
+  
   const {
     messages: aiMessages,
     handleInputChange,
@@ -78,17 +93,39 @@ export function ChatContainer({
     status,
     error,
   } = useChat({
-    api: sessionId && !isNewChat(sessionId) ? `${apiUrl}/${sessionId}` : apiUrl,
+    api: shouldInitializeChat ? apiEndpoint : undefined,
     id: 'chat-session',
     initialMessages: (sessionId && !isNewChat(sessionId) ? loadChat(sessionId) : []) as UIMessage[],
-    experimental_streamData: true,
-    streamProtocol: 'data',
-  } as {
-    api: string;
-    id: string;
-    initialMessages: UIMessage[];
-    experimental_streamData: boolean;
+    streamProtocol: 'data' as const,
+    headers: modelConfig ? {
+      'Authorization': `Bearer ${modelConfig.apiKey}`,
+    } : {},
+    body: modelConfig ? {
+      provider: modelConfig.provider,
+      model: modelConfig.model,
+    } : {} as Record<string, string>,
+    onError: (error) => {
+      console.error('Chat error:', error);
+      if (error.message.includes('API key')) {
+        setModelError('Invalid API key. Please check your configuration.');
+      } else if (error.message.includes('model')) {
+        setModelError('Invalid model. Please check your model selection.');
+      } else if (error.message.includes('provider')) {
+        setModelError('Invalid provider. Please check your configuration.');
+      } else {
+        setModelError('An error occurred while chatting.');
+      }
+    },
   });
+
+  // Check for model configuration on mount and when it changes
+  useEffect(() => {
+    if (!modelConfig) {
+      setModelError('No AI model configured. Please select a model and provide an API key.');
+    } else {
+      setModelError(null);
+    }
+  }, [modelConfig]);
 
   // Status tracking for UI state
   useEffect(() => {
@@ -213,7 +250,7 @@ export function ChatContainer({
   // Form submission handler
   const handleFormSubmit = React.useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !modelConfig) return;
     
     // Set thinking state immediately for better UX
     setIsThinking(true);
@@ -221,7 +258,7 @@ export function ChatContainer({
     handleSubmit(e);
     
     setInputValue("");
-  }, [inputValue, handleSubmit]);
+  }, [inputValue, modelConfig, handleSubmit]);
   
   // Input change handler
   const handleLocalInputChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -249,6 +286,20 @@ export function ChatContainer({
       {showHeader && <ChatHeader title={displayTitle} onEdit={onEdit} />}
       
       <div className="flex-1 overflow-y-auto px-6 py-6">
+        {/* Show model configuration error if present */}
+        {modelError && (
+          <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            {modelError}
+          </div>
+        )}
+        
+        {/* Show current model info */}
+        {modelConfig && (
+          <div className="mb-4 p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 text-xs">
+            Using {modelConfig.provider.toUpperCase()} - {modelConfig.model}
+          </div>
+        )}
+        
         {messagesWithDates.map((item, index) => {
           const isFirstItem = index === 0;
           const standardMarginClass = isFirstItem ? "" : "mt-6";
@@ -289,7 +340,7 @@ export function ChatContainer({
       )}
       
       <div className="px-4 py-2 text-xs text-right text-gray-400">
-        Status: {status} | Thinking: {isThinking ? 'yes' : 'no'} | Latest: {
+        Status: {status} | Thinking: {isThinking ? 'yes' : 'no'} | Provider: {modelConfig?.provider || 'none'} | Model: {modelConfig?.model || 'none'} | Latest: {
           aiMessages.length > 0 ? 
           (aiMessages[aiMessages.length - 1].role === 'assistant' ? 
             aiMessages[aiMessages.length - 1].content.substring(0, 20) + '...' : 
@@ -304,13 +355,13 @@ export function ChatContainer({
             type="text"
             value={inputValue}
             onChange={handleLocalInputChange}
-            placeholder="Type a message..."
-            disabled={status === 'submitted' || status === 'streaming'}
-            className="flex-1 px-4 py-3 rounded-full font-[var(--font-space-grotesk)] text-[rgba(255,255,255,0.8)] bg-[#17181A] border border-[rgba(255,255,255,0.1)] focus:outline-none focus:border-[rgba(255,255,255,0.2)]"
+            placeholder={modelConfig ? "Type a message..." : "Please configure a model first..."}
+            disabled={!modelConfig || status === 'submitted' || status === 'streaming'}
+            className="flex-1 px-4 py-3 rounded-full font-[var(--font-space-grotesk)] text-[rgba(255,255,255,0.8)] bg-[#17181A] border border-[rgba(255,255,255,0.1)] focus:outline-none focus:border-[rgba(255,255,255,0.2)] disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || status === 'submitted' || status === 'streaming'}
+            disabled={!modelConfig || !inputValue.trim() || status === 'submitted' || status === 'streaming'}
             className="inline-flex items-center justify-center p-3 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
             style={{
               background: "linear-gradient(92deg, rgba(114, 255, 192, 0.10) 0%, rgba(32, 132, 95, 0.10) 99.74%)",
