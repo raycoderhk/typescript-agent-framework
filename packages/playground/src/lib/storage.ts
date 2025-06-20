@@ -71,6 +71,7 @@ interface ProviderConfig {
 
 export function saveAIModelConfig(config: AIModelConfig) {
   try {
+    if (typeof window === 'undefined') return;
     // Save the provider-specific config
     const providerConfig: ProviderConfig = {
       apiKey: config.apiKey,
@@ -90,6 +91,7 @@ export function saveAIModelConfig(config: AIModelConfig) {
 
 export function loadAIModelConfig(): AIModelConfig | null {
   try {
+    if (typeof window === 'undefined') return null;
     // Get the current provider
     const currentProvider = localStorage.getItem(CURRENT_PROVIDER_KEY) as 'openai' | 'anthropic' || 'openai';
     
@@ -130,6 +132,7 @@ export function saveCurrentProvider(provider: 'openai' | 'anthropic') {
 
 export function getCurrentProvider(): 'openai' | 'anthropic' {
   try {
+    if (typeof window === 'undefined') return 'openai';
     return (localStorage.getItem(CURRENT_PROVIDER_KEY) as 'openai' | 'anthropic') || 'openai';
   } catch (error) {
     console.error('Failed to get current provider:', error);

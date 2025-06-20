@@ -18,10 +18,9 @@
 		"prepublishOnly": "yarn run build",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
-		"dev:proxy": "wrangler dev -c wrangler.proxy.jsonc",
 		"start": "wrangler dev",
 		"test": "vitest run",
-		"cf-typegen": "wrangler types --include-runtime=false"
+		"codegen": "wrangler types -c wrangler.jsonc --env-interface Env env.d.ts"
 	},
 	"keywords": [
 		"mcp",
@@ -44,7 +43,6 @@
 	"homepage": "https://xavalabs.com",
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.15",
-		"@cloudflare/workers-types": "^4.20250410.0",
 		"@semantic-release/git": "^10.0.1",
 		"semantic-release": "^23.0.0",
 		"typescript": "^5.8.3",

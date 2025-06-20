@@ -14,6 +14,12 @@ import {
 } from "@/lib/search";
 import { mockMCPDirectory } from "@/data/mock-mcp-servers";
 
+interface ApiResponse {
+  success: boolean;
+  error?: string;
+  message?: string;
+}
+
 export interface MCPServerDirectoryProps {
   className?: string;
   onServerToggle?: (server: MCPServer, enabled: boolean) => void;
@@ -82,8 +88,41 @@ export function MCPServerDirectory({
     return searchInstance.getCategories();
   }, [searchInstance]);
 
-  const handleServerToggle = (server: MCPServer, enabled: boolean) => {
-    onServerToggle?.(server, enabled);
+  const handleServerToggle = async (server: MCPServer, enabled: boolean) => {
+    if (enabled) {
+      // Call the add API
+      try {
+        const response = await fetch('/api/mcp-servers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            uniqueName: server.id,
+            command: server.mcpServerConfig.command,
+            args: server.mcpServerConfig.args,
+            env: server.mcpServerConfig.env
+          })
+        });
+
+        const result: ApiResponse = await response.json();
+        
+        if (result.success) {
+          console.log(`Successfully added MCP server: ${server.name}`);
+          onServerToggle?.(server, enabled);
+        } else {
+          console.error(`Failed to add MCP server: ${result.error}`);
+          alert(`Failed to add MCP server: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Error adding MCP server:', error);
+        alert('Failed to add MCP server due to network error');
+      }
+    } else {
+      // For disable, just call the callback for now
+      // TODO: Implement delete API call
+      onServerToggle?.(server, enabled);
+    }
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {

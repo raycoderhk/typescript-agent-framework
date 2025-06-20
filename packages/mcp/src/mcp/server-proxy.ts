@@ -47,19 +47,13 @@ export class McpServerProxyDO extends McpServerDO {
    * Process a remote container WebSocket connection
    */
   protected processRemoteContainerConnection(request: Request): Response {
+    console.log("Accepting WebSocket connection");
+
     // Verify the Upgrade header is present and is WebSocket
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== 'websocket') {
+      console.log("Rejecting connection - Upgrade header is not websocket");
       return new Response('Expected Upgrade: websocket', {
-        status: 426,
-      });
-    }
-
-    // Check for 'mcp' subprotocol
-    const protocols = request.headers.get('Sec-WebSocket-Protocol');
-    const acceptProtocol = protocols?.split(',').map(p => p.trim()).includes(MCP_SUBPROTOCOL);
-    if (!acceptProtocol) {
-      return new Response('Expected Sec-WebSocket-Protocol: mcp', {
         status: 426,
       });
     }
@@ -71,20 +65,18 @@ export class McpServerProxyDO extends McpServerDO {
     // Store marker that this is a remote container connection
     server.serializeAttachment({ isRemoteContainer: true } as RemoteContainerAttachment);
 
+    console.log("Accepting WebSocket connection");
     // Accept WebSocket with hibernation support
     this.ctx.acceptWebSocket(server);
 
     // Set this as the proxy connection
     this.mcpProxy.setProxyConnection(server);
 
-    // Return the client end of the WebSocket with the MCP subprotocol
-    const headers = new Headers();
-    headers.set('Sec-WebSocket-Protocol', MCP_SUBPROTOCOL);
+    console.log('Remote container connection accepted');
 
     return new Response(null, {
       status: 101,
       webSocket: client,
-      headers,
     });
   }
 
@@ -96,6 +88,7 @@ export class McpServerProxyDO extends McpServerDO {
     
     // Check if this is a remote container connection
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
+        console.log('🔍 Received message from remote container');
         this.mcpProxy.handleProxyMessage(data);
     } else {
         // Process the message via transport for consistency
@@ -112,11 +105,82 @@ export class McpServerProxyDO extends McpServerDO {
     // Check if this is a remote container connection
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
       console.log('Remote container disconnected');
-      return;
     }
     
     // Delegate to parent for regular client handling
     return super.webSocketClose(ws, code, reason, wasClean);
+  }
+
+  /**
+   * Handle add server requests
+   */
+  private async handleAddServer(request: Request): Promise<Response> {
+    console.log('handleAddServer: Processing request...');
+    try {
+      // Read request body
+      const body = await request.json();
+      console.log('handleAddServer: Received body:', JSON.stringify(body, null, 2));
+      
+      // Forward the message to the remote container via WebSocket
+      console.log('handleAddServer: Forwarding to proxy...');
+      this.mcpProxy.forwardToProxy(JSON.stringify(body));
+      
+      // Return a success response for now
+      const response = {
+        success: true,
+        message: 'Add request forwarded to remote container',
+        receivedData: body
+      };
+      
+      console.log('handleAddServer: Returning success response');
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      console.error('handleAddServer: Error occurred:', error);
+      const errorResponse = {
+        success: false,
+        error: 'Failed to process add request',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      };
+      
+      return new Response(JSON.stringify(errorResponse), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  /**
+   * Handle list servers requests
+   */
+  private async handleListServers(request: Request): Promise<Response> {
+    try {
+      const body = await request.json();
+      
+      // Forward the message to the remote container via WebSocket
+      this.mcpProxy.forwardToProxy(JSON.stringify(body));
+      
+      // Return a success response for now
+      // In a real implementation, you might want to wait for a response from the container
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'List request forwarded to remote container',
+        data: []
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Failed to process list request',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
   }
 
   /**
@@ -125,12 +189,29 @@ export class McpServerProxyDO extends McpServerDO {
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+    const method = request.method;
+
+    console.log(`McpServerProxyDO: ${method} ${path} (full URL: ${url.toString()})`);
 
     // Process remote container WebSocket upgrade requests
-    if (path.endsWith(REMOTE_CONTAINER_WS_ENDPOINT)) {
+    if (path === REMOTE_CONTAINER_WS_ENDPOINT || path.endsWith(REMOTE_CONTAINER_WS_ENDPOINT)) {
+      console.log('Handling WebSocket upgrade request');
       return this.processRemoteContainerConnection(request);
     }
 
+    // Handle add server requests - use exact match
+    if (path === '/add-server' && method === 'POST') {
+      console.log('Handling add server request - exact match');
+      return this.handleAddServer(request);
+    }
+
+    // Handle list servers requests - use exact match  
+    if (path === '/list-servers' && method === 'POST') {
+      console.log('Handling list servers request - exact match');
+      return this.handleListServers(request);
+    }
+
+    console.log(`No handler found for ${method} ${path}, delegating to parent McpServerDO`);
     // Delegate everything else to the parent McpServerDO
     return super.fetch(request);
   }

@@ -14,7 +14,7 @@
 		"binding": "ASSETS",
 		"directory": ".open-next/assets"
 	},
-	"observability": {
+		"observability": {
 		"enabled": true
 	},
 	"durable_objects": {

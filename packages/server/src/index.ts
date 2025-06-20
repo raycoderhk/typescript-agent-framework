@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { WebSocketServer } from 'ws'
+import WebSocket from 'ws'
 import { createServer } from 'http'
 import { mkdirSync } from 'fs'
 import { dirname } from 'path'
@@ -11,6 +11,7 @@ import { createPackageRepository, PackageRepository } from './persistence/index.
 // Environment configuration
 const PORT = parseInt(process.env.PORT || '3000')
 const DB_PATH = process.env.DB_PATH || './data/packages.db'
+const MCP_PROXY_URL = process.env.MCP_PROXY_URL || 'ws://localhost:8787/remote-container/ws'
 
 // Ensure data directory exists
 mkdirSync(dirname(DB_PATH), { recursive: true })
@@ -279,116 +280,150 @@ app.get('/', (c) => {
   })
 })
 
-// Start server
-async function startServer() {
+// Global WebSocket instance to prevent multiple connections
+let globalWs: WebSocket | null = null;
+let isConnecting = false;
+
+// Connect to MCP proxy as WebSocket client
+async function connectToMcpProxy() {
+  if (isConnecting) {
+    console.log('⚠️ Connection already in progress, skipping...')
+    return;
+  }
+  
+  if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+    console.log('⚠️ Already connected to MCP proxy, skipping...')
+    return;
+  }
+  
   try {
-    console.log(`Server starting on port ${PORT}`)
+    isConnecting = true;
+    console.log(`Connecting to MCP proxy at: ${MCP_PROXY_URL}`)
+    console.log(`💾 Database: ${DB_PATH}`)
     
-    // Create HTTP server for both Hono and WebSocket
-    const server = createServer()
+    // Connect to MCP proxy as WebSocket client
+    const ws = new WebSocket(MCP_PROXY_URL)
+    globalWs = ws;
     
-    // Handle HTTP requests with Hono
-    server.on('request', async (req, res) => {
+    ws.on('open', () => {
+      isConnecting = false;
+      console.log('✅ Connected to MCP proxy server')
+      console.log('🔍 WebSocket readyState:', ws.readyState)
+      
+      // Send an initial identification message
+      ws.send(JSON.stringify({
+        type: 'client_ready',
+        clientId: 'mcp-package-manager',
+        timestamp: new Date().toISOString()
+      }))
+    })
+    
+    ws.on('message', async (data: Buffer) => {
       try {
-        const response = await app.fetch(req as any)
-        res.statusCode = response.status
+        const messageData = JSON.parse(data.toString())
+        console.log('📨 Received message from MCP proxy:', messageData)
         
-        // Set headers
-        for (const [key, value] of response.headers.entries()) {
-          res.setHeader(key, value)
+        // Validate message structure
+        const validatedMessage = WebSocketMessageSchema.parse(messageData)
+        
+        let result: any
+        
+        // Handle different verbs
+        switch (validatedMessage.verb) {
+          case 'add':
+            result = await handleAddCommand(validatedMessage.data)
+            break
+          case 'delete':
+            result = await handleDeleteCommand(validatedMessage.data)
+            break
+          case 'list':
+            result = await handleListCommand()
+            break
+          default:
+            //TODO: The remaining commands need to be implemented by somehow forwarding it to the MCP Server
+            result = {
+              success: false,
+              error: `Unknown verb: ${validatedMessage.verb}`
+            }
         }
         
-        // Send body
-        const body = await response.text()
-        res.end(body)
+        // Send response back to MCP proxy
+        ws.send(JSON.stringify({
+          verb: validatedMessage.verb,
+          ...result,
+          timestamp: new Date().toISOString()
+        }))
+        
+        console.log('📤 Sent response to MCP proxy')
+        
       } catch (error) {
-        res.statusCode = 500
-        res.end('Internal Server Error')
+        console.error('❌ Error processing message from MCP proxy:', error)
+        
+        let errorMessage = 'Failed to process message'
+        let details = undefined
+        
+        if (error instanceof z.ZodError) {
+          errorMessage = 'Invalid message format'
+          details = error.errors
+        } else if (error instanceof SyntaxError) {
+          errorMessage = 'Invalid JSON format'
+        }
+        
+        ws.send(JSON.stringify({
+          success: false,
+          error: errorMessage,
+          details,
+          timestamp: new Date().toISOString()
+        }))
       }
     })
     
-    // Create WebSocket server
-    const wss = new WebSocketServer({ server, path: '/ws' })
-    
-    wss.on('connection', (ws) => {
-      console.log('WebSocket connection established')
+    ws.on('close', (code, reason) => {
+      isConnecting = false;
+      globalWs = null;
+      console.log('❌ Disconnected from MCP proxy server')
+      console.log('🔍 Close code:', code)
+      console.log('🔍 Close reason:', reason.toString())
+      console.log('🔍 WebSocket readyState:', ws.readyState)
       
-      ws.on('message', async (data) => {
-        try {
-          const messageData = JSON.parse(data.toString())
-          console.log('Received message:', messageData)
-          
-          // Validate message structure
-          const validatedMessage = WebSocketMessageSchema.parse(messageData)
-          
-          let result: any
-          
-          // Handle different verbs
-          switch (validatedMessage.verb) {
-            case 'add':
-              result = await handleAddCommand(validatedMessage.data)
-              break
-            case 'delete':
-              result = await handleDeleteCommand(validatedMessage.data)
-              break
-            case 'list':
-              result = await handleListCommand()
-              break
-            default:
-              result = {
-                success: false,
-                error: `Unknown verb: ${validatedMessage.verb}`
-              }
-          }
-          
-          // Send response
-          ws.send(JSON.stringify({
-            verb: validatedMessage.verb,
-            ...result,
-            timestamp: new Date().toISOString()
-          }))
-          
-        } catch (error) {
-          console.error('Error processing message:', error)
-          
-          let errorMessage = 'Failed to process message'
-          let details = undefined
-          
-          if (error instanceof z.ZodError) {
-            errorMessage = 'Invalid message format'
-            details = error.errors
-          } else if (error instanceof SyntaxError) {
-            errorMessage = 'Invalid JSON format'
-          }
-          
-          ws.send(JSON.stringify({
-            success: false,
-            error: errorMessage,
-            details,
-            timestamp: new Date().toISOString()
-          }))
-        }
-      })
-      
-      ws.on('close', () => {
-        console.log('WebSocket connection closed')
-      })
-      
-      ws.on('error', (error) => {
-        console.error('WebSocket error:', error)
-      })
+      // Implement reconnection logic
+      setTimeout(() => {
+        console.log('🔄 Attempting to reconnect to MCP proxy...')
+        connectToMcpProxy() // Recursive reconnection
+      }, 5000)
     })
     
-    server.listen(PORT, () => {
-      console.log(`🚀 Server running at http://localhost:${PORT}`)
-      console.log(`📡 WebSocket endpoint: ws://localhost:${PORT}/ws`)
-      console.log(`💾 Database: ${DB_PATH}`)
+    ws.on('error', (error: Error) => {
+      isConnecting = false;
+      globalWs = null;
+      console.error('❌ WebSocket connection error:', error)
+      // Try to reconnect after error
+      setTimeout(() => {
+        console.log('🔄 Attempting to reconnect after error...')
+        connectToMcpProxy()
+      }, 5000)
     })
     
   } catch (error) {
-    console.error('Failed to start server:', error)
-    process.exit(1)
+    isConnecting = false;
+    globalWs = null;
+    console.error('Failed to connect to MCP proxy:', error)
+    // Retry connection
+    setTimeout(() => {
+      console.log('🔄 Retrying connection...')
+      connectToMcpProxy()
+    }, 5000)
   }
 }
 
-startServer()
+// Parse command line arguments
+const args = process.argv.slice(2)
+const mcpProxyArgIndex = args.findIndex(arg => arg === '--mcp-proxy' || arg === '-m')
+if (mcpProxyArgIndex !== -1 && args[mcpProxyArgIndex + 1]) {
+  // Override the MCP_PROXY_URL with command line argument
+  process.env.MCP_PROXY_URL = args[mcpProxyArgIndex + 1]
+  console.log(`Using MCP proxy URL from command line: ${args[mcpProxyArgIndex + 1]}`)
+}
+
+// Connect to MCP proxy
+connectToMcpProxy()

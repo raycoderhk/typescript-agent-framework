@@ -18,8 +18,21 @@ export class McpServerProxy implements IMcpServer {
    * Set the proxy connection to the remote container
    */
   public setProxyConnection(webSocket: WebSocket): void {
+    console.log('🔗 Setting proxy connection, WebSocket readyState:', webSocket.readyState);
     this.proxyConnection = webSocket;
     this.isProxyConnected = true;
+    
+    // Add listeners to track connection state
+    webSocket.addEventListener('close', () => {
+      console.log('❌ Proxy WebSocket connection closed');
+      this.isProxyConnected = false;
+      this.proxyConnection = null;
+    });
+    
+    webSocket.addEventListener('error', (error) => {
+      console.log('❌ Proxy WebSocket error:', error);
+      this.isProxyConnected = false;
+    });
   }
 
   /**
@@ -71,6 +84,7 @@ export class McpServerProxy implements IMcpServer {
     // Set the new transport as the active one
     this.connectedTransport = transport;
     
+    console.log('🔍 Setting Transport for proxy');
     transport.onmessage = (message: JSONRPCMessage) => {
       this.forwardToProxy(JSON.stringify(message));
     };
@@ -79,9 +93,18 @@ export class McpServerProxy implements IMcpServer {
   /**
    * Forward a` message to the remote proxy
    */
-  private forwardToProxy(data: string | ArrayBuffer): void {
+  public forwardToProxy(data: string | ArrayBuffer): void {
+    console.log('📤 Attempting to forward message to proxy');
+    console.log('🔍 Proxy state - isProxyConnected:', this.isProxyConnected);
+    console.log('🔍 Proxy state - proxyConnection exists:', !!this.proxyConnection);
+    
+    if (this.proxyConnection) {
+      console.log('🔍 Proxy WebSocket readyState:', this.proxyConnection.readyState);
+    }
+    
     if (this.isProxyConnected && this.proxyConnection) {
       try {
+        console.log('✅ Sending message to proxy WebSocket');
         this.proxyConnection.send(data);
       } catch (error) {
         console.error('Error sending message to proxy:', error);

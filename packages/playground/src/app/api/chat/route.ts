@@ -37,23 +37,28 @@ let mcpClientManager: MCPClientManager | null = null;
 function getMCPClientManager(): MCPClientManager {
   if (!mcpClientManager) {
     mcpClientManager = new MCPClientManager('playground-chat', '1.0.0');
+    mcpClientManager.connect("http://localhost:8787/sse?sessionId=localhost")
   }
   return mcpClientManager;
 }
 
 // Function to connect to MCP server
-async function connectToMCPServer(proxyId: string, baseUrl: string): Promise<string | null> {
+async function connectToMCPServer(proxyId: string, mcpProxyUrl: string): Promise<string | null> {
   try {
     const manager = getMCPClientManager();
     
-    // Convert HTTP URL to WebSocket URL for MCP connection
-    const wsUrl = new URL(`/api/mcp-proxy/${proxyId}`, baseUrl);
-    wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
+    // Use SSE endpoint for MCP connection (not WebSocket)
+    // The MCPClientManager expects SSE transport
+    const sseUrl = new URL(mcpProxyUrl);
+    // Use the /sse endpoint for MCP connections
+    sseUrl.pathname = '/sse';
+    // Add sessionId parameter for the MCP connection
+    sseUrl.searchParams.set('sessionId', proxyId);
     
-    console.log(`Connecting to MCP server for proxy ID: ${proxyId}, URL: ${wsUrl.toString()}`);
+    console.log(`Connecting to MCP server for proxy ID: ${proxyId}, URL: ${sseUrl.toString()}`);
     
     // Connect to the MCP server using the manager
-    const { id } = await manager.connect(wsUrl.toString());
+    const { id } = await manager.connect(sseUrl.toString());
     console.log(`MCP server connected successfully with ID: ${id}`);
     
     return id;
@@ -85,31 +90,25 @@ export async function POST(request: NextRequest) {
     const body: ChatRequest = await request.json();
     const { messages, provider, model, mcpProxyId, ...otherParams } = body;
 
-    // Get environment variables
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-
-    // Validate API key
-    const apiKey = provider === 'openai' ? openaiApiKey : anthropicApiKey;
+    // Get API key from Authorization header instead of environment variables
+    const authHeader = request.headers.get('authorization');
+    const apiKey = authHeader?.replace('Bearer ', '');
+    
     if (!apiKey) {
       return Response.json(
-        { error: `${provider.toUpperCase()}_API_KEY is not configured` },
-        { status: 400 }
+        { error: 'API key required in Authorization header' },
+        { status: 401 }
       );
     }
 
     // Create the provider
     const providerInstance = await createProvider(provider, apiKey);
 
+    // Figure out proxy id later, for now just use localhost
     // Connect to MCP server if proxy ID is provided
-    let mcpServerId: string | null = null;
-    if (mcpProxyId) {
-      const baseUrl = new URL(request.url).origin;
-      mcpServerId = await connectToMCPServer(mcpProxyId, baseUrl);
-    }
-
+    
     // Get MCP tools if connected
-    const mcpTools = mcpServerId ? await getMCPTools() : {};
+    const mcpTools = await getMCPTools();
 
     const result = await streamText({
       model: providerInstance(model),
