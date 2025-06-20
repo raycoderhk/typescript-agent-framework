@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 export interface DateDividerProps {
   date: string | Date;
@@ -7,15 +8,10 @@ export interface DateDividerProps {
 }
 
 export function DateDivider({ date, className }: DateDividerProps) {
-  // Format date to "Day, DD Mon YYYY" format
+  // Use a fixed format with date-fns instead of toLocaleDateString to prevent hydration issues
   const formattedDate = typeof date === 'string'
     ? date
-    : date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      });
+    : format(date, 'EEE, dd MMM yyyy');
 
   return (
     <div className="flex justify-center items-center h-[28px] px-[32px] py-[12px] gap-[10px] flex-shrink-0">

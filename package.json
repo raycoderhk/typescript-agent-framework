@@ -9,6 +9,8 @@
   "scripts": {
     "build": "yarn workspaces run build",
     "test": "yarn workspaces run test",
+    "dev:playground": "yarn workspace playground dev",
+    "dev:mcp-proxy": "yarn workspace @xava-labs/mcp dev:proxy",
     "changeset": "changeset",
     "version": "changeset version",
     "publish": "changeset publish"
