@@ -1,10 +1,12 @@
 import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
 import WebSocket from 'ws'
-import { createServer } from 'http'
 import { mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { z } from 'zod'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { WebSocketTransport } from '@xava-labs/mcp/dist/mcp/websocket-transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { createPackageRepository, PackageRepository } from './persistence/index.js'
 
@@ -304,7 +306,16 @@ async function connectToMcpProxy() {
     // Connect to MCP proxy as WebSocket client
     const ws = new WebSocket(MCP_PROXY_URL)
     globalWs = ws;
-    
+
+    // Use this MCP server as the frontfacing proxy to other MCP servers
+    const mcpServer = new Server({
+      name: 'mcp-proxy-server',
+      version: '1.0.0'
+    });
+
+    const transport = new WebSocketTransport(ws as any, "fake-id");
+    mcpServer.connect(transport);
+
     ws.on('open', () => {
       isConnecting = false;
       console.log('✅ Connected to MCP proxy server')
@@ -319,9 +330,16 @@ async function connectToMcpProxy() {
     })
     
     ws.on('message', async (data: Buffer) => {
+      const messageData = JSON.parse(data.toString())
+      console.log('📨 Received message from MCP proxy:', messageData)
+
+      // Doesn't contain verb, then process it as a MCP message
+      if (!messageData.verb) {
+        transport.handleMessage(messageData)
+        return;
+      }
+
       try {
-        const messageData = JSON.parse(data.toString())
-        console.log('📨 Received message from MCP proxy:', messageData)
         
         // Validate message structure
         const validatedMessage = WebSocketMessageSchema.parse(messageData)
@@ -340,8 +358,7 @@ async function connectToMcpProxy() {
             result = await handleListCommand()
             break
           default:
-            //TODO: The remaining commands need to be implemented by somehow forwarding it to the MCP Server
-            result = {
+          result = {
               success: false,
               error: `Unknown verb: ${validatedMessage.verb}`
             }
@@ -424,6 +441,15 @@ if (mcpProxyArgIndex !== -1 && args[mcpProxyArgIndex + 1]) {
   process.env.MCP_PROXY_URL = args[mcpProxyArgIndex + 1]
   console.log(`Using MCP proxy URL from command line: ${args[mcpProxyArgIndex + 1]}`)
 }
+
+// Start the HTTP server
+serve({
+  fetch: app.fetch,
+  port: PORT
+}, () => {
+  console.log(`🚀 HTTP server started on port ${PORT}`)
+  console.log(`📍 Health check: http://localhost:${PORT}`)
+})
 
 // Connect to MCP proxy
 connectToMcpProxy()

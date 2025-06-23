@@ -1,6 +1,6 @@
 import { JSONRPCMessage, Implementation } from '@modelcontextprotocol/sdk/types.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { IMcpServer } from './mcp-server-interface';
+import { IMcpServer } from '@xava-labs/mcp/src/mcp/mcp-server-interface';
 
 /**
  * Simple MCP Server Proxy that acts like McpServer but forwards messages to a remote container

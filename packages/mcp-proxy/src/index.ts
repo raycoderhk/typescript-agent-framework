@@ -1,4 +1,4 @@
-import { McpServerProxyDO } from '@xava-labs/mcp';
+import { McpServerProxyDO } from './server-proxy';
 
 // Export the Durable Object class for deployment
 export { McpServerProxyDO };

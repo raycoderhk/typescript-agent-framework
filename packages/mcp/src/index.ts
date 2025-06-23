@@ -7,18 +7,18 @@ export * from './mcp/sse-transport.js'
 export * from './mcp/websocket-transport.js';
 // transport-factory removed - using direct imports
 export * from './mcp/mcp-server-interface.js';
-export * from './mcp/mcp-server-proxy.js';
-export * from './mcp/server-proxy.js';
+export * from '../../mcp-proxy/src/mcp-server-proxy.js';
+export * from '../../mcp-proxy/src/server-proxy.js';
 
 // Export the McpHonoServerDO class
 export { McpHonoServerDO } from './mcp/hono-server';
 export { McpServerDO } from './mcp/server';
-export { McpServerProxyDO } from './mcp/server-proxy';
-export { McpServerProxy } from './mcp/mcp-server-proxy';
+export { McpServerProxyDO } from '../../mcp-proxy/src/server-proxy.js';
+export { McpServerProxy } from '../../mcp-proxy/src/mcp-server-proxy.js';
 
 // Default worker export for the proxy functionality
 interface Env {
-  MCP_SERVER_PROXY: DurableObjectNamespace<import('./mcp/server-proxy').McpServerProxyDO>;
+  MCP_SERVER_PROXY: DurableObjectNamespace<import('../../mcp-proxy/src/server-proxy.js').McpServerProxyDO>;
 }
 
 export default {
