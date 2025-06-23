@@ -42,33 +42,6 @@ function getMCPClientManager(): MCPClientManager {
   return mcpClientManager;
 }
 
-// Function to connect to MCP server
-async function connectToMCPServer(proxyId: string, mcpProxyUrl: string): Promise<string | null> {
-  try {
-    const manager = getMCPClientManager();
-    
-    // Use SSE endpoint for MCP connection (not WebSocket)
-    // The MCPClientManager expects SSE transport
-    const sseUrl = new URL(mcpProxyUrl);
-    // Use the /sse endpoint for MCP connections
-    sseUrl.pathname = '/sse';
-    // Add sessionId parameter for the MCP connection
-    sseUrl.searchParams.set('sessionId', proxyId);
-    
-    console.log(`Connecting to MCP server for proxy ID: ${proxyId}, URL: ${sseUrl.toString()}`);
-    
-    // Connect to the MCP server using the manager
-    const { id } = await manager.connect(sseUrl.toString());
-    console.log(`MCP server connected successfully with ID: ${id}`);
-    
-    return id;
-  } catch (error) {
-    console.error('Failed to connect to MCP server:', error);
-    // Don't throw - just return null so the chat can continue without MCP
-    return null;
-  }
-}
-
 // Function to get MCP tools from the manager
 async function getMCPTools() {
   try {
@@ -76,7 +49,7 @@ async function getMCPTools() {
     
     // Get AI SDK compatible tools from the manager
     const tools = manager.unstable_getAITools();
-    console.log('Available MCP tools:', Object.keys(tools));
+    console.log('Available MCP to:', Object.keys(tools));
     
     return tools;
   } catch (error) {
@@ -88,7 +61,7 @@ async function getMCPTools() {
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { messages, provider, model, mcpProxyId, ...otherParams } = body;
+    const { messages, provider, model, ...otherParams } = body;
 
     // Get API key from Authorization header instead of environment variables
     const authHeader = request.headers.get('authorization');

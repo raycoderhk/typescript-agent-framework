@@ -1,9 +1,6 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import { NextRequest, NextResponse } from 'next/server';
 
-interface Env {
-  MCP_SERVER_PROXY: DurableObjectNamespace;
-}
 
 interface AddMcpServerRequest {
   uniqueName: string;
@@ -29,7 +26,7 @@ interface McpServerMessage {
 
 export async function POST(request: NextRequest) {
   try {
-    const { env } = getCloudflareContext() as { env: Env };
+    const { env } = getCloudflareContext();
     const body = await request.json() as AddMcpServerRequest;
     
     // Validate request body
@@ -39,10 +36,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Create DO ID for this operation (using a consistent name for singleton behavior)
-    const id = env.MCP_SERVER_PROXY.idFromName('localhost');
-    const stub = env.MCP_SERVER_PROXY.get(id);
 
     // Prepare the message payload for the server
     const message: McpServerMessage = {
@@ -55,11 +48,11 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    console.log('Using DO stub, calling /add-server');
+    console.log('Using service binding, calling /add-server');
     console.log('Message payload:', message);
 
-    // Send the add message to the proxy via POST request
-    const response = await stub.fetch('https://stub/add-server', {
+    // Send the add message to the proxy via service binding
+    const response = await env.MCP_PROXY.fetch('https://do/add-server', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,27 +78,23 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const { env } = getCloudflareContext() as { env: Env };
-    
-    // Create DO ID for this operation
-    const id = env.MCP_SERVER_PROXY.idFromName('localhost');
-    const stub = env.MCP_SERVER_PROXY.get(id);
+    const { env } = getCloudflareContext();
 
     // Prepare the list message
     const message: McpServerMessage = {
       verb: 'list'
     };
 
-    console.log('Using DO stub, calling /list-servers');
+    console.log('Using service binding, calling /list-servers');
 
-    // Send the list message to the proxy via POST request
-    const response = await stub.fetch('https://stub/list-servers', {
+    // Send the list message to the proxy via service binding
+    const response = await env.MCP_PROXY.fetch(new Request('https://do/list-servers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(message)
-    });
+    }));
 
     const result = await response.json();
     

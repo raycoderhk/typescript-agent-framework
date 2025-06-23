@@ -15,10 +15,10 @@
 		"print-tools-registry": "tools-registry-cli --stdout"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.7.5",
+		"@cloudflare/vitest-pool-workers": "^0.8.43",
+		"concurrently": "^9.1.2",
 		"typescript": "^5.5.2",
 		"vitest": "~3.0.7",
-		"concurrently": "^9.1.2",
 		"wrangler": "^4.13.0"
 	},
 	"dependencies": {

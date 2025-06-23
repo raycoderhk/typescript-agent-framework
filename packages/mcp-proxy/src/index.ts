@@ -6,6 +6,7 @@ export { McpServerProxyDO };
 // Export the handler for deployment
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    console.log('fetch', request.url);
     // Route to the Durable Object
     const id = env.MCP_SERVER_PROXY.idFromName("localhost");
     const proxy = env.MCP_SERVER_PROXY.get(id);

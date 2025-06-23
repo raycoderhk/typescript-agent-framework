@@ -32,7 +32,7 @@
     "@modelcontextprotocol/sdk": "^1.9.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.15",
+    "@cloudflare/vitest-pool-workers": "^0.8.43",
     "@cloudflare/workers-types": "^4.20250416.0",
     "@semantic-release/git": "^10.0.1",
     "semantic-release": "^24.2.3",

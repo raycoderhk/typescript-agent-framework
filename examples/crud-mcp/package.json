@@ -13,7 +13,7 @@
     "cf-typegen": "wrangler types --include-runtime=false"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.8.15",
+    "@cloudflare/vitest-pool-workers": "^0.8.43",
     "@cloudflare/workers-types": "^4.20250410.0",
     "@xava-labs/test-utils": "file:../../packages/test-utils",
     "concurrently": "^9.1.2",

@@ -11,9 +11,9 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { createPackageRepository, PackageRepository } from './persistence/index.js'
 
 // Environment configuration
-const PORT = parseInt(process.env.PORT || '3000')
+const PORT = parseInt(process.env.PORT || '3001')
 const DB_PATH = process.env.DB_PATH || './data/packages.db'
-const MCP_PROXY_URL = process.env.MCP_PROXY_URL || 'ws://localhost:8787/remote-container/ws'
+const MCP_PROXY_URL = process.env.MCP_PROXY_URL || 'ws://localhost:6050/api/remote-container/ws'
 
 // Ensure data directory exists
 mkdirSync(dirname(DB_PATH), { recursive: true })

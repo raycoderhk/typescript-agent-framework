@@ -15,7 +15,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"prepublishOnly": "yarn run build",
+		"prepublishOnly": "tsc",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
@@ -42,7 +42,7 @@
 	},
 	"homepage": "https://xavalabs.com",
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.15",
+		"@cloudflare/vitest-pool-workers": "^0.8.43",
 		"@semantic-release/git": "^10.0.1",
 		"semantic-release": "^23.0.0",
 		"typescript": "^5.8.3",

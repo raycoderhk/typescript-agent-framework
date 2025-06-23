@@ -3,14 +3,14 @@
 	"version": "0.2.0",
 	"private": true,
 	"scripts": {
-		"dev": "next dev",
+		"dev": "wrangler dev -c ../mcp-proxy/wrangler.jsonc --port 6050 & next dev",
 		"build": "next build",
 		"start": "next start",
 		"lint": "next lint",
 		"test": "echo No tests",
 		"deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-		"preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-		"codegen": "wrangler types --env-interface CloudflareEnv"
+		"preview": "opennextjs-cloudflare build && wrangler dev -c ./wrangler.jsonc -c ../mcp-proxy/wrangler.jsonc",
+		"codegen": "wrangler types --env-interface CloudflareEnv env.d.ts"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.2.12",
@@ -26,7 +26,7 @@
 		"date-fns": "^4.1.0",
 		"fuse.js": "^7.1.0",
 		"lucide-react": "^0.503.0",
-		"next": "15.3.1",
+		"next": "15.2.0",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"tailwind-merge": "^3.2.0",
@@ -34,7 +34,7 @@
 	},
 	"devDependencies": {
 		"@eslint/eslintrc": "^3",
-		"@opennextjs/cloudflare": "^1.3.0",
+		"@opennextjs/cloudflare": "^1.3.1",
 		"@tailwindcss/postcss": "^4",
 		"@types/node": "^20",
 		"@types/react": "^19",
