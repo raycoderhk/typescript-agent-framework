@@ -10,7 +10,7 @@ interface AddMcpServerRequest {
 }
 
 interface McpServerMessage {
-  verb: 'add' | 'delete' | 'list';
+  verb: 'add' | 'delete' | 'list' | 'status';
   data?: {
     'unique-name': string;
     command: string;
@@ -19,9 +19,18 @@ interface McpServerMessage {
   };
 }
 
+interface DeleteMcpServerRequest {
+  uniqueName: string;
+}
+
+
+
+
+
 /**
  * POST /api/mcp-servers - Add a new MCP server
- * GET /api/mcp-servers - List all MCP servers
+ * GET /api/mcp-servers - List all MCP servers  
+ * DELETE /api/mcp-servers - Remove an MCP server
  */
 
 export async function POST(request: NextRequest) {
@@ -88,13 +97,13 @@ export async function GET() {
     console.log('Using service binding, calling /list-servers');
 
     // Send the list message to the proxy via service binding
-    const response = await env.MCP_PROXY.fetch(new Request('https://do/list-servers', {
+    const response = await env.MCP_PROXY.fetch('https://do/list-servers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(message)
-    }));
+    });
 
     const result = await response.json();
     
@@ -110,4 +119,58 @@ export async function GET() {
       { status: 500 }
     );
   }
-} 
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { env } = getCloudflareContext();
+    const body = await request.json() as DeleteMcpServerRequest;
+    
+    // Validate request body
+    if (!body.uniqueName) {
+      return NextResponse.json(
+        { success: false, error: 'uniqueName is required' },
+        { status: 400 }
+      );
+    }
+
+    // Prepare the message payload for the server
+    const message: McpServerMessage = {
+      verb: 'delete',
+      data: {
+        'unique-name': body.uniqueName,
+        command: '', // Not needed for delete
+        args: [],
+        env: {}
+      }
+    };
+
+    console.log('Using service binding, calling /delete-server');
+    console.log('Message payload:', message);
+
+    // Send the delete message to the proxy via service binding
+    const response = await env.MCP_PROXY.fetch('https://do/delete-server', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message)
+    });
+
+    const result = await response.json();
+    
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error('Error deleting MCP server:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+ 

@@ -124,7 +124,7 @@ export function ModelSelector({ className, onModelChange }: ModelSelectorProps) 
     const configToSave = availableModels.length > 0 ? config : null;
     saveAIModelConfig(config);
     onModelChange?.(configToSave);
-  }, [config, availableModels, onModelChange]);
+  }, [config, availableModels]); // Removed onModelChange from dependencies to prevent infinite loop
 
   const handleProviderChange = (provider: 'openai' | 'anthropic') => {
     // Load the saved config for this provider, or use empty values if none exists

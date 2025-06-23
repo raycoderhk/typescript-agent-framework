@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ChatContainer } from "@/components/chat";
 import { MCPServerDirectory } from "@/components/mcp-server-directory";
 import { ModelSelector } from "@/components/model-selector";
@@ -15,7 +15,7 @@ interface ModelConfig {
 }
 
 export default function Home() {
-  const [enabledServers, setEnabledServers] = useState<Set<string>>(new Set());
+  const [enabledServerCount, setEnabledServerCount] = useState<number>(0);
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
 
   // Load initial model config
@@ -39,25 +39,22 @@ export default function Home() {
   }, []);
 
   const handleServerToggle = (server: MCPServer, enabled: boolean) => {
-    setEnabledServers(prev => {
-      const newSet = new Set(prev);
-      if (enabled) {
-        newSet.add(server.id);
-      } else {
-        newSet.delete(server.id);
-      }
-      return newSet;
-    });
+    // Server state is now managed in MCPServerDirectory component
+    console.log(`Server ${server.name} ${enabled ? 'enabled' : 'disabled'}`);
   };
 
-  const handleModelChange = (config: ModelConfig | null) => {
+  const handleServerCountChange = (count: number) => {
+    setEnabledServerCount(count);
+  };
+
+  const handleModelChange = useCallback((config: ModelConfig | null) => {
     console.log('Model config updated:', config);
     setModelConfig(config);
-  };
+  }, []);
 
   // Determine chat title based on selected server
-  const chatTitle = enabledServers.size > 0
-    ? `Chat with ${enabledServers.size} MCP Server${enabledServers.size > 1 ? 's' : ''}`
+  const chatTitle = enabledServerCount > 0
+    ? `Chat with ${enabledServerCount} MCP Server${enabledServerCount > 1 ? 's' : ''}`
     : "Playground Chat";
 
       return (
@@ -69,7 +66,7 @@ export default function Home() {
         <div className="w-1/2 border-r border-[rgba(255,255,255,0.1)] flex-shrink-0">
           <MCPServerDirectory
             onServerToggle={handleServerToggle}
-            enabledServerIds={enabledServers}
+            onServerCountChange={handleServerCountChange}
           />
         </div>
 

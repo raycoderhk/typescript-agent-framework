@@ -22,6 +22,7 @@ export class McpServerProxyDO extends McpServerDO {
   private mcpProxy: McpServerProxy;
   
   constructor(ctx: DurableObjectState, env: any) {
+    console.log('🏗️ McpServerProxyDO constructor called - Durable Object created/recreated');
     const proxy = new McpServerProxy();
     super(ctx, env, proxy);
     this.mcpProxy = proxy;
@@ -104,11 +105,29 @@ export class McpServerProxyDO extends McpServerDO {
     
     // Check if this is a remote container connection
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
-      console.log('Remote container disconnected');
+      console.log('🔌 Remote container WebSocket closed:', { code, reason, wasClean });
+      this.mcpProxy.setProxyConnection(null);
+      console.log('Remote container disconnected:', reason);
     }
     
     // Delegate to parent for regular client handling
     return super.webSocketClose(ws, code, reason, wasClean);
+  }
+
+  /**
+   * Override webSocketError to handle remote container errors
+   */
+  override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+    const attachment = ws.deserializeAttachment() as RemoteContainerAttachment | { sessionId: string } | null;
+    
+    // Check if this is a remote container connection
+    if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
+      console.log('❌ Remote container WebSocket error:', error);
+      this.mcpProxy.setProxyConnection(null);
+    }
+    
+    // Delegate to parent for regular client handling
+    return super.webSocketError(ws, error);
   }
 
   /**
@@ -184,6 +203,104 @@ export class McpServerProxyDO extends McpServerDO {
   }
 
   /**
+   * Handle delete server requests
+   */
+  private async handleDeleteServer(request: Request): Promise<Response> {
+    console.log('handleDeleteServer: Processing request...');
+    try {
+      // Read request body
+      const body = await request.json();
+      console.log('handleDeleteServer: Received body:', JSON.stringify(body, null, 2));
+      
+      // Forward the message to the remote container via WebSocket
+      console.log('handleDeleteServer: Forwarding to proxy...');
+      this.mcpProxy.forwardToProxy(JSON.stringify(body));
+      
+      // Return a success response for now
+      const response = {
+        success: true,
+        message: 'Delete request forwarded to remote container',
+        receivedData: body
+      };
+      
+      console.log('handleDeleteServer: Returning success response');
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      console.error('handleDeleteServer: Error occurred:', error);
+      const errorResponse = {
+        success: false,
+        error: 'Failed to process delete request',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      };
+      
+      return new Response(JSON.stringify(errorResponse), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  /**
+   * Handle status check requests
+   */
+  private async handleStatus(request: Request): Promise<Response> {
+    console.log('handleStatus: Processing request...');
+    try {
+      // No need to read request body for GET requests
+      
+      // Check if we have any hibernated WebSocket connections
+      const hibernatedSockets = this.ctx.getWebSockets();
+      const remoteContainerSockets = hibernatedSockets.filter(ws => {
+        const attachment = ws.deserializeAttachment() as RemoteContainerAttachment | null;
+        return attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer;
+      });
+      
+      console.log('🔍 Hibernated WebSocket check:', {
+        totalSockets: hibernatedSockets.length,
+        remoteContainerSockets: remoteContainerSockets.length
+      });
+      
+      // If we have hibernated remote container sockets but no active connection, restore it
+      if (remoteContainerSockets.length > 0 && !this.mcpProxy.isConnected()) {
+        console.log('🔄 Restoring connection from hibernated WebSocket');
+        this.mcpProxy.setProxyConnection(remoteContainerSockets[0]);
+      }
+      
+      // Check if we have an active proxy connection
+      const isConnected = this.mcpProxy.isConnected();
+      
+      const response = {
+        success: true,
+        connected: isConnected,
+        message: isConnected ? 'Remote container is connected' : 'Remote container is not connected',
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('handleStatus: Returning status response:', response);
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (error) {
+      console.error('handleStatus: Error occurred:', error);
+      const errorResponse = {
+        success: false,
+        connected: false,
+        error: 'Failed to check status',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      };
+      
+      return new Response(JSON.stringify(errorResponse), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  /**
    * Main fetch handler - adds remote container endpoint, delegates rest to parent
    */
   override async fetch(request: Request): Promise<Response> {
@@ -211,8 +328,34 @@ export class McpServerProxyDO extends McpServerDO {
       return this.handleListServers(request);
     }
 
-    console.log(`No handler found for ${method} ${path}, delegating to parent McpServerDO`);
-    // Delegate everything else to the parent McpServerDO
-    return super.fetch(request);
+    // Handle delete server requests - use exact match
+    if (path === '/delete-server' && method === 'POST') {
+      console.log('Handling delete server request - exact match');
+      return this.handleDeleteServer(request);
+    }
+
+    // Handle status check requests - use exact match
+    if (path === '/status' && method === 'GET') {
+      console.log('Handling status check request - exact match');
+      return this.handleStatus(request);
+    }
+
+    // Only delegate to parent for MCP-related endpoints
+    if (path.endsWith('/ws') || path.endsWith('/sse') || path.endsWith('/message')) {
+      console.log(`Delegating MCP endpoint ${method} ${path} to parent McpServerDO`);
+      return super.fetch(request);
+    }
+
+    // For any other paths, return 404
+    console.log(`No handler found for ${method} ${path}, returning 404`);
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'Endpoint not found',
+      path: path,
+      method: method
+    }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 } 

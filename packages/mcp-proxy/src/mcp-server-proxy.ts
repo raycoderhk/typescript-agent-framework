@@ -10,6 +10,7 @@ export class McpServerProxy implements IMcpServer {
   private proxyConnection: WebSocket | null = null;
   private connectedTransport: Transport | null = null;
   private isProxyConnected = false;
+  private lastConnectionTime: number = 0;
 
   constructor() {
   }
@@ -17,10 +18,18 @@ export class McpServerProxy implements IMcpServer {
   /**
    * Set the proxy connection to the remote container
    */
-  public setProxyConnection(webSocket: WebSocket): void {
-    console.log('🔗 Setting proxy connection, WebSocket readyState:', webSocket.readyState);
+  public setProxyConnection(webSocket: WebSocket | null): void {
+    if (!webSocket) {
+      console.log('🔗 Setting proxy connection to null');
+      this.proxyConnection = null;
+      this.isProxyConnected = false;
+      return;
+    }
+
+    console.log('🔗 Setting proxy connection, WebSocket readyState:', webSocket?.readyState);
     this.proxyConnection = webSocket;
     this.isProxyConnected = true;
+    this.lastConnectionTime = Date.now();
     
     // Add listeners to track connection state
     webSocket.addEventListener('close', () => {
@@ -32,7 +41,43 @@ export class McpServerProxy implements IMcpServer {
     webSocket.addEventListener('error', (error) => {
       console.log('❌ Proxy WebSocket error:', error);
       this.isProxyConnected = false;
+    });    
+  }
+
+  /**
+   * Check if the proxy is currently connected
+   */
+  public isConnected(): boolean {
+    const hasConnection = this.proxyConnection !== null;
+    const isMarkedConnected = this.isProxyConnected;
+    const readyState = this.proxyConnection?.readyState;
+    
+    const timeSinceConnection = Date.now() - this.lastConnectionTime;
+    
+    console.log('🔍 Connection check:', {
+      hasConnection,
+      isMarkedConnected,
+      readyState,
+      readyStateText: readyState === 0 ? 'CONNECTING' : 
+                     readyState === 1 ? 'OPEN' : 
+                     readyState === 2 ? 'CLOSING' : 
+                     readyState === 3 ? 'CLOSED' : 'UNKNOWN',
+      lastConnectionTime: new Date(this.lastConnectionTime).toISOString(),
+      timeSinceConnectionMs: timeSinceConnection
     });
+    
+    // For hibernated WebSockets in Cloudflare Workers, readyState might not be reliable
+    // So we'll primarily rely on our internal tracking, but also check for obviously closed states
+    if (this.proxyConnection && (readyState === 3 || readyState === 2) && this.isProxyConnected) {
+      console.log('🔄 Updating connection state - WebSocket is CLOSED or CLOSING');
+      this.isProxyConnected = false;
+    }
+    
+    // Consider connected if we have a connection object and it's marked as connected
+    // and not in a definitely closed state
+    const actuallyConnected = hasConnection && isMarkedConnected && readyState !== 3;
+    
+    return actuallyConnected;
   }
 
   /**

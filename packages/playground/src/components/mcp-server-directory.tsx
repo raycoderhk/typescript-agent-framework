@@ -20,22 +20,77 @@ interface ApiResponse {
   message?: string;
 }
 
+interface ListApiResponse extends ApiResponse {
+  data?: Array<{
+    id: number;
+    name: string;
+    command: string;
+    args: string[];
+    env: string[];
+    installedAt: string;
+  }>;
+  count?: number;
+}
+
+interface StatusApiResponse extends ApiResponse {
+  connected: boolean;
+  message?: string;
+  timestamp?: string;
+}
+
 export interface MCPServerDirectoryProps {
   className?: string;
   onServerToggle?: (server: MCPServer, enabled: boolean) => void;
-  enabledServerIds?: Set<string>;
+  onServerCountChange?: (count: number) => void;
 }
 
 export function MCPServerDirectory({
   className,
   onServerToggle,
-  enabledServerIds = new Set()
+  onServerCountChange
 }: MCPServerDirectoryProps) {
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [searchInstance, setSearchInstance] = useState<MCPServerSearch | null>(null);
+  const [installedServers, setInstalledServers] = useState<Set<string>>(new Set());
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState<string>('Checking...');
+
+  // Check proxy connection status
+  const checkConnectionStatus = async () => {
+    try {
+      const response = await fetch('/api/mcp-servers/status');
+      const result = await response.json() as StatusApiResponse;
+      
+      setIsConnected(result.connected);
+      setConnectionStatus(result.connected ? 'Connected' : 'Disconnected');
+      
+      return result.connected;
+    } catch (error) {
+      console.error('Error checking connection status:', error);
+      setIsConnected(false);
+      setConnectionStatus('Error');
+      return false;
+    }
+  };
+
+  // Fetch list of installed servers from the API
+  const fetchInstalledServers = async () => {
+    try {
+      const response = await fetch('/api/mcp-servers');
+      const result = await response.json() as ListApiResponse;
+      
+      if (result.success && result.data) {
+        const installedIds = new Set(result.data.map(server => server.name));
+        setInstalledServers(installedIds);
+        onServerCountChange?.(installedIds.size);
+      }
+    } catch (error) {
+      console.error('Error fetching installed servers:', error);
+    }
+  };
 
   // Initialize data and search
   useEffect(() => {
@@ -57,10 +112,27 @@ export function MCPServerDirectory({
       const search = initializeSearch(directory.servers);
       setSearchInstance(search);
       
+      // Check connection status first
+      const connected = await checkConnectionStatus();
+      
+      // Only fetch installed servers if connected
+      if (connected) {
+        await fetchInstalledServers();
+      }
+      
       setIsLoading(false);
     };
     
     initializeData();
+  }, []);
+
+  // Periodic status check
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      await checkConnectionStatus();
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   // Get filtered and searched servers
@@ -109,6 +181,8 @@ export function MCPServerDirectory({
         
         if (result.success) {
           console.log(`Successfully added MCP server: ${server.name}`);
+          // Refresh the list of installed servers
+          await fetchInstalledServers();
           onServerToggle?.(server, enabled);
         } else {
           console.error(`Failed to add MCP server: ${result.error}`);
@@ -119,9 +193,33 @@ export function MCPServerDirectory({
         alert('Failed to add MCP server due to network error');
       }
     } else {
-      // For disable, just call the callback for now
-      // TODO: Implement delete API call
-      onServerToggle?.(server, enabled);
+      // Call the delete API
+      try {
+        const response = await fetch('/api/mcp-servers', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            uniqueName: server.id
+          })
+        });
+
+        const result: ApiResponse = await response.json();
+        
+        if (result.success) {
+          console.log(`Successfully removed MCP server: ${server.name}`);
+          // Refresh the list of installed servers
+          await fetchInstalledServers();
+          onServerToggle?.(server, enabled);
+        } else {
+          console.error(`Failed to remove MCP server: ${result.error}`);
+          alert(`Failed to remove MCP server: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Error removing MCP server:', error);
+        alert('Failed to remove MCP server due to network error');
+      }
     }
   };
 
@@ -163,7 +261,15 @@ export function MCPServerDirectory({
       {/* Header */}
       <div className="p-6 border-b border-[rgba(255,255,255,0.1)]">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white/95 mb-2">MCP Server Directory</h1>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-bold text-white/95">MCP Server Directory</h1>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-sm text-white/60">
+                Local Tools {connectionStatus}
+              </span>
+            </div>
+          </div>
           <p className="text-sm text-white/60">Discover and connect to Model Context Protocol servers</p>
         </div>
         
@@ -257,7 +363,7 @@ export function MCPServerDirectory({
               <MCPServerItem
                 key={server.id}
                 server={server}
-                isEnabled={enabledServerIds.has(server.id)}
+                isEnabled={installedServers.has(server.id)}
                 onToggle={handleServerToggle}
               />
             ))}
