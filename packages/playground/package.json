@@ -1,16 +1,33 @@
 {
-	"name": "playground",
+	"name": "@xava-labs/playground",
 	"version": "0.2.0",
-	"private": true,
+	"private": false,
+	"main": "./dist/index.js",
+	"module": "./dist/index.mjs",
+	"exports": {
+		".": {
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		},
+		"./styles": "./dist/styles.css"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
 	"scripts": {
 		"dev": "wrangler dev -c ../mcp-proxy/wrangler.jsonc --port 6050 & next dev",
 		"build": "next build",
+		"build:lib": "npm run build:components && npm run build:styles",
+		"build:components": "tsup src/lib/exports/index.ts --format cjs,esm --clean",
+		"build:styles": "mkdir -p dist && cp ./src/lib/exports/styles.css ./dist/styles.css",
 		"start": "next start",
 		"lint": "next lint",
 		"test": "echo No tests",
 		"deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
 		"preview": "opennextjs-cloudflare build && wrangler dev -c ./wrangler.jsonc -c ../mcp-proxy/wrangler.jsonc",
-		"codegen": "wrangler types --env-interface CloudflareEnv env.d.ts"
+		"codegen": "wrangler types --env-interface CloudflareEnv env.d.ts",
+		"prepublishOnly": "npm run build:lib"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.2.12",
@@ -46,8 +63,13 @@
 		"eslint": "^9",
 		"eslint-config-next": "15.3.1",
 		"tailwindcss": "^4",
+		"tsup": "^8.3.5",
 		"tw-animate-css": "^1.2.8",
 		"typescript": "^5",
 		"wrangler": "^4.13.0"
+	},
+	"peerDependencies": {
+		"react": "^18.0.0 || ^19.0.0",
+		"react-dom": "^18.0.0 || ^19.0.0"
 	}
 }
