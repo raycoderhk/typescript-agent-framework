@@ -4,6 +4,14 @@ export interface MCPServerVersion {
   tag?: string;
 }
 
+// VSCode MCP input format
+export interface MCPServerInput {
+  type: "promptString";
+  id: string;
+  description: string;
+  password?: boolean;
+}
+
 export interface MCPServerConfig {
   command: string;
   args: string[];
@@ -16,12 +24,23 @@ export interface MCPServerRepository {
   directory?: string;
 }
 
+// Configuration storage for installed MCPs
+export interface MCPServerConfigData {
+  serverId: string;
+  inputs: Record<string, string>; // Maps input.id to user-provided value
+  isConfigured: boolean;
+  isEnabled: boolean;
+  configuredAt: string;
+  lastUpdated?: string;
+}
+
 export interface MCPServer {
   id: string; // Unique identifier
   name: string; // Unique name
   shortDescription: string; // < 255 characters
   repository: MCPServerRepository;
   mcpServerConfig: MCPServerConfig;
+  inputs?: MCPServerInput[]; // Configuration inputs following VSCode format
   versions: MCPServerVersion[];
   keywords: string[];
   licenses: string[];

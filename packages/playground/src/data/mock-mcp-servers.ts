@@ -9,11 +9,19 @@ export const mockMCPServers: MCPServer[] = [
       type: "git",
       url: "https://github.com/GLips/Figma-Context-MCP.git"
     },
+    inputs: [
+      {
+        type: "promptString",
+        id: "figma_api_key",
+        description: "Figma Personal Access Token (get from Figma Account Settings > Personal access tokens)",
+        password: true
+      }
+    ],
     mcpServerConfig: {
       command: "npx",
-      args: ["-y", "figma-developer-mcp", "--figma-api-key=YOUR-KEY", "--stdio"],
+      args: ["-y", "figma-developer-mcp", "--figma-api-key=${input:figma_api_key}", "--stdio"],
       env: {
-        "FIGMA_API_KEY": "required"
+        "FIGMA_API_KEY": "${input:figma_api_key}"
       }
     },
     versions: [
@@ -48,12 +56,9 @@ export const mockMCPServers: MCPServer[] = [
       directory: "apps/docs-vectorize"
     },
     mcpServerConfig: {
-      command: "node",
-      args: ["dist/index.js"],
-      env: {
-        "CLOUDFLARE_API_TOKEN": "required",
-        "CLOUDFLARE_ACCOUNT_ID": "required"
-      }
+      command: "npx",
+      args: ["mcp-remote", "https://docs.mcp.cloudflare.com/sse"],
+      env: {}
     },
     versions: [
       {

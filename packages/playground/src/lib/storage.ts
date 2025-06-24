@@ -1,5 +1,5 @@
 import { Message } from '@ai-sdk/react';
-import { MCPServerDirectory } from '@/types/mcp-server';
+import { MCPServerDirectory, MCPServerConfigData } from '@/types/mcp-server';
 
 // Chat session storage
 const CHAT_STORAGE_PREFIX = 'chat_session_';
@@ -165,4 +165,72 @@ export function getCurrentModelConfig(): AIModelConfig | null {
   }
   
   return null;
+}
+
+// MCP Configuration storage
+const MCP_CONFIG_PREFIX = 'mcp_config_';
+
+export function saveMCPConfig(config: MCPServerConfigData) {
+  try {
+    localStorage.setItem(
+      `${MCP_CONFIG_PREFIX}${config.serverId}`,
+      JSON.stringify(config)
+    );
+  } catch (error) {
+    console.error('Failed to save MCP config:', error);
+  }
+}
+
+export function loadMCPConfig(serverId: string): MCPServerConfigData | null {
+  try {
+    const stored = localStorage.getItem(`${MCP_CONFIG_PREFIX}${serverId}`);
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.error('Failed to load MCP config:', error);
+    return null;
+  }
+}
+
+export function deleteMCPConfig(serverId: string) {
+  try {
+    localStorage.removeItem(`${MCP_CONFIG_PREFIX}${serverId}`);
+  } catch (error) {
+    console.error('Failed to delete MCP config:', error);
+  }
+}
+
+export function getAllMCPConfigs(): Record<string, MCPServerConfigData> {
+  try {
+    const configs: Record<string, MCPServerConfigData> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(MCP_CONFIG_PREFIX)) {
+        const serverId = key.replace(MCP_CONFIG_PREFIX, '');
+        const config = loadMCPConfig(serverId);
+        if (config) {
+          configs[serverId] = config;
+        }
+      }
+    }
+    return configs;
+  } catch (error) {
+    console.error('Failed to load all MCP configs:', error);
+    return {};
+  }
+}
+
+export function updateMCPConfigStatus(serverId: string, updates: Partial<Pick<MCPServerConfigData, 'isEnabled' | 'lastUpdated'>>) {
+  try {
+    const config = loadMCPConfig(serverId);
+    if (config) {
+      const updatedConfig = {
+        ...config,
+        ...updates,
+        lastUpdated: new Date().toISOString()
+      };
+      saveMCPConfig(updatedConfig);
+    }
+  } catch (error) {
+    console.error('Failed to update MCP config status:', error);
+  }
 } 

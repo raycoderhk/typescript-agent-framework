@@ -2,11 +2,14 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { MCPServer } from "@/types/mcp-server";
+import { MCPServer, MCPServerConfigData } from "@/types/mcp-server";
 import { MCPServerItem } from "./mcp-server-item";
+import { MCPConfigurationDrawer } from "./mcp-configuration-drawer";
 import { 
   saveMCPDirectory, 
-  loadMCPDirectory 
+  loadMCPDirectory,
+  updateMCPConfigStatus,
+  loadMCPConfig
 } from "@/lib/storage";
 import { 
   initializeSearch, 
@@ -31,6 +34,10 @@ export function MCPServerDirectory({
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [searchInstance, setSearchInstance] = useState<MCPServerSearch | null>(null);
+  
+  // Configuration drawer state
+  const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
+  const [selectedServer, setSelectedServer] = useState<MCPServer | null>(null);
 
   // Use the WebSocket-based MCP server manager
   const { 
@@ -40,6 +47,8 @@ export function MCPServerDirectory({
     deleteServer,
     isServerLoading
   } = useMcpServerManager();
+
+
 
   // Create a set of installed server IDs for quick lookup
   const installedServers = useMemo(() => {
@@ -64,6 +73,10 @@ export function MCPServerDirectory({
         directory = mockMCPDirectory;
         saveMCPDirectory(directory);
       }
+      
+      // For now, always use fresh mock data to ensure we have the latest inputs
+      directory = mockMCPDirectory;
+      saveMCPDirectory(directory);
       
       setServers(directory.servers);
       
@@ -102,32 +115,142 @@ export function MCPServerDirectory({
     return searchInstance.getCategories();
   }, [searchInstance]);
 
-  const handleServerToggle = async (server: MCPServer, enabled: boolean) => {
-    if (enabled) {
-      try {
-        const success = await addServer({
-          uniqueName: server.id,
-          command: server.mcpServerConfig.command,
-          args: server.mcpServerConfig.args,
-          env: server.mcpServerConfig.env || {}
-        });
+  // Utility function to substitute input values in env vars and args
+  const substituteInputValues = (
+    config: MCPServerConfigData, 
+    template: string
+  ): string => {
+    return template.replace(/\$\{input:([^}]+)\}/g, (match, inputId) => {
+      return config.inputs[inputId] || match;
+    });
+  };
+
+  const handleServerInstall = (server: MCPServer) => {
+    setSelectedServer(server);
+    setConfigDrawerOpen(true);
+  };
+
+  const handleServerConfigure = (server: MCPServer) => {
+    setSelectedServer(server);
+    setConfigDrawerOpen(true);
+  };
+
+  const handleConfigurationSave = async (server: MCPServer, config: MCPServerConfigData) => {
+    try {
+      // Prepare the server configuration with substituted values
+      const serverConfig = {
+        uniqueName: server.id,
+        command: server.mcpServerConfig.command,
+        args: server.mcpServerConfig.args.map(arg => 
+          substituteInputValues(config, arg)
+        ),
+        env: Object.fromEntries(
+          Object.entries(server.mcpServerConfig.env || {}).map(([key, value]) => [
+            key,
+            substituteInputValues(config, value)
+          ])
+        )
+      };
+
+      // Install the MCP server
+      const success = await addServer(serverConfig);
+      
+      if (success) {
+        // Update the configuration to mark as enabled
+        updateMCPConfigStatus(server.id, { isEnabled: true });
         
-        if (success) {
-          console.log(`Successfully added MCP server: ${server.name}`);
-          onServerToggle?.(server, enabled);
-        } else {
-          console.error(`Failed to add MCP server: ${server.name}`);
-          alert(`Failed to add MCP server: ${server.name}`);
+        console.log(`Successfully installed/updated MCP server: ${server.name}`);
+        onServerToggle?.(server, true);
+      } else {
+        console.error(`Failed to install/update MCP server: ${server.name}`);
+        throw new Error(`Failed to install/update MCP server: ${server.name}`);
+      }
+    } catch (error) {
+      console.error('Error installing/updating MCP server:', error);
+      throw error; // Re-throw to let the drawer handle the error
+    }
+  };
+
+  const handleServerToggle = async (server: MCPServer, enabled: boolean) => {
+    console.log(`Toggle request: ${server.name}, enabled: ${enabled}, hasInputs: ${!!server.inputs}`);
+    
+    if (enabled) {
+      // For servers that require configuration, load saved config and reinstall
+      if (server.inputs && server.inputs.length > 0) {
+        try {
+          const savedConfig = loadMCPConfig(server.id);
+          
+          if (!savedConfig || !savedConfig.isConfigured) {
+            console.log(`No saved config found for ${server.name}, opening configuration drawer`);
+            // No saved configuration, open the configuration drawer
+            handleServerInstall(server);
+            return;
+          }
+          
+          console.log(`Re-enabling configured server: ${server.name}`);
+          
+          // Prepare the server configuration with substituted values
+          const serverConfig = {
+            uniqueName: server.id,
+            command: server.mcpServerConfig.command,
+            args: server.mcpServerConfig.args.map(arg => 
+              substituteInputValues(savedConfig, arg)
+            ),
+            env: Object.fromEntries(
+              Object.entries(server.mcpServerConfig.env || {}).map(([key, value]) => [
+                key,
+                substituteInputValues(savedConfig, value)
+              ])
+            )
+          };
+
+          // Install the MCP server
+          const success = await addServer(serverConfig);
+          
+          if (success) {
+            // Update the configuration to mark as enabled
+            updateMCPConfigStatus(server.id, { isEnabled: true });
+            
+            console.log(`Successfully re-enabled MCP server: ${server.name}`);
+            onServerToggle?.(server, enabled);
+          } else {
+            console.error(`Failed to re-enable MCP server: ${server.name}`);
+            alert(`Failed to re-enable MCP server: ${server.name}`);
+          }
+        } catch (error) {
+          console.error('Error re-enabling configured MCP server:', error);
+          alert('Failed to re-enable MCP server due to network error');
         }
-      } catch (error) {
-        console.error('Error adding MCP server:', error);
-        alert('Failed to add MCP server due to network error');
+      } else {
+        // Handle non-configured servers (existing logic)
+        try {
+          const success = await addServer({
+            uniqueName: server.id,
+            command: server.mcpServerConfig.command,
+            args: server.mcpServerConfig.args,
+            env: server.mcpServerConfig.env || {}
+          });
+          
+          if (success) {
+            console.log(`Successfully added MCP server: ${server.name}`);
+            onServerToggle?.(server, enabled);
+          } else {
+            console.error(`Failed to add MCP server: ${server.name}`);
+            alert(`Failed to add MCP server: ${server.name}`);
+          }
+        } catch (error) {
+          console.error('Error adding MCP server:', error);
+          alert('Failed to add MCP server due to network error');
+        }
       }
     } else {
       try {
         const success = await deleteServer(server.id);
         
         if (success) {
+          // Update local config to mark as disabled
+          updateMCPConfigStatus(server.id, { isEnabled: false });
+          
           console.log(`Successfully removed MCP server: ${server.name}`);
           onServerToggle?.(server, enabled);
         } else {
@@ -139,6 +262,10 @@ export function MCPServerDirectory({
         alert('Failed to remove MCP server due to network error');
       }
     }
+  };
+
+  const isServerEnabled = (server: MCPServer): boolean => {
+    return installedServers.has(server.id);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,14 +408,28 @@ export function MCPServerDirectory({
               <MCPServerItem
                 key={server.id}
                 server={server}
-                isEnabled={installedServers.has(server.id)}
+                isEnabled={isServerEnabled(server)}
                 isLoading={isServerLoading(server.id)}
+                onInstall={handleServerInstall}
+                onConfigure={handleServerConfigure}
                 onToggle={handleServerToggle}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Configuration Drawer */}
+      <MCPConfigurationDrawer
+        server={selectedServer}
+        isOpen={configDrawerOpen}
+        onClose={() => {
+          setConfigDrawerOpen(false);
+          setSelectedServer(null);
+        }}
+        onSave={handleConfigurationSave}
+        isLoading={selectedServer ? isServerLoading(selectedServer.id) : false}
+      />
     </div>
   );
 } 

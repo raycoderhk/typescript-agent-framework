@@ -3,11 +3,15 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { MCPServer } from "@/types/mcp-server";
+import { loadMCPConfig } from "@/lib/storage";
+import { Settings } from "lucide-react";
 
 export interface MCPServerItemProps {
   server: MCPServer;
   isEnabled?: boolean;
   isLoading?: boolean;
+  onInstall?: (server: MCPServer) => void;
+  onConfigure?: (server: MCPServer) => void;
   onToggle?: (server: MCPServer, enabled: boolean) => void;
   className?: string;
 }
@@ -16,9 +20,26 @@ export function MCPServerItem({
   server,
   isEnabled = false,
   isLoading = false,
+  onInstall,
+  onConfigure,
   onToggle,
   className
 }: MCPServerItemProps) {
+  // Check if server requires configuration and is configured
+  const requiresConfiguration = server.inputs && server.inputs.length > 0;
+  const configuration = requiresConfiguration ? loadMCPConfig(server.id) : null;
+  const isConfigured = configuration?.isConfigured || false;
+
+  const handleInstallClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onInstall?.(server);
+  };
+
+  const handleConfigureClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onConfigure?.(server);
+  };
+
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     onToggle?.(server, !isEnabled);
@@ -33,6 +54,99 @@ export function MCPServerItem({
     } catch {
       return '';
     }
+  };
+
+  const renderActionControls = () => {
+    // For servers that don't require configuration
+    if (!requiresConfiguration) {
+      return (
+        <button
+          onClick={handleToggle}
+          disabled={isLoading}
+          className={cn(
+            "relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
+            isLoading && "animate-pulse ring-2 ring-yellow-400/60 shadow-lg shadow-yellow-400/30",
+            isEnabled && !isLoading && "bg-[#72FFC0]",
+            isLoading && "bg-yellow-400",
+            !isEnabled && !isLoading && "bg-[rgba(255,255,255,0.1)]",
+            isLoading && "cursor-not-allowed"
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-3 w-3 transform rounded-full transition-all duration-300",
+              isLoading && "bg-white animate-spin border border-yellow-600",
+              !isLoading && "bg-white",
+              isEnabled && !isLoading ? "translate-x-5" : "translate-x-1"
+            )}
+          >
+            {isLoading && (
+              <div className="absolute inset-0 rounded-full border-t-2 border-yellow-600 animate-spin" />
+            )}
+          </span>
+        </button>
+      );
+    }
+
+    // For servers that require configuration
+    if (!isConfigured) {
+      // Show install button
+      return (
+        <button
+          onClick={handleInstallClick}
+          disabled={isLoading}
+          className={cn(
+            "px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200",
+            "bg-[#72FFC0] text-black hover:bg-[#72FFC0]/90",
+            "focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
+            isLoading && "opacity-50 cursor-not-allowed animate-pulse"
+          )}
+        >
+          {isLoading ? "Installing..." : "Install"}
+        </button>
+      );
+    }
+
+    // Show toggle + settings for configured servers
+    return (
+      <div className="flex items-center gap-2">
+        {/* Settings icon */}
+        <button
+          onClick={handleConfigureClick}
+          className="p-1 text-white/60 hover:text-white/80 transition-colors"
+          title="Configure settings"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
+
+        {/* Toggle switch */}
+        <button
+          onClick={handleToggle}
+          disabled={isLoading}
+          className={cn(
+            "relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
+            isLoading && "animate-pulse ring-2 ring-yellow-400/60 shadow-lg shadow-yellow-400/30",
+            isEnabled && !isLoading && "bg-[#72FFC0]",
+            isLoading && "bg-yellow-400",
+            !isEnabled && !isLoading && "bg-[rgba(255,255,255,0.1)]",
+            isLoading && "cursor-not-allowed"
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-3 w-3 transform rounded-full transition-all duration-300",
+              isLoading && "bg-white animate-spin border border-yellow-600",
+              !isLoading && "bg-white",
+              isEnabled && !isLoading ? "translate-x-5" : "translate-x-1"
+            )}
+          >
+            {isLoading && (
+              <div className="absolute inset-0 rounded-full border-t-2 border-yellow-600 animate-spin" />
+            )}
+          </span>
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -67,32 +181,8 @@ export function MCPServerItem({
             </div>
           )}
           
-          {/* Toggle Switch */}
-          <button
-            onClick={handleToggle}
-            disabled={isLoading}
-            className={cn(
-              "relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
-              isLoading && "animate-pulse ring-2 ring-yellow-400/60 shadow-lg shadow-yellow-400/30",
-              isEnabled && !isLoading && "bg-[#72FFC0]",
-              isLoading && "bg-yellow-400",
-              !isEnabled && !isLoading && "bg-[rgba(255,255,255,0.1)]",
-              isLoading && "cursor-not-allowed"
-            )}
-          >
-            <span
-              className={cn(
-                "inline-block h-3 w-3 transform rounded-full transition-all duration-300",
-                isLoading && "bg-white animate-spin border border-yellow-600",
-                !isLoading && "bg-white",
-                isEnabled && !isLoading ? "translate-x-5" : "translate-x-1"
-              )}
-            >
-              {isLoading && (
-                <div className="absolute inset-0 rounded-full border-t-2 border-yellow-600 animate-spin" />
-              )}
-            </span>
-          </button>
+          {/* Action Controls */}
+          {renderActionControls()}
         </div>
       </div>
 
@@ -136,8 +226,6 @@ export function MCPServerItem({
           <span>{formatDate(server.lastUpdated)}</span>
         )}
       </div>
-
-
     </div>
   );
 } 
