@@ -1,20 +1,36 @@
 # MCP Proxy Example
 
-This example demonstrates how to use the MCP Server Proxy functionality to create a Cloudflare Worker that can proxy MCP (Model Context Protocol) requests to remote containers.
+This example demonstrates how to use the MCP Server Proxy functionality to create a Cloudflare Worker that can proxy MCP (Model Context Protocol) requests between web clients and remote containers.
 
 ## Overview
 
 The MCP Proxy allows you to:
 - Deploy a Cloudflare Worker that acts as an MCP server proxy
-- Connect to remote containers running MCP servers
+- Connect web clients to remote containers running MCP servers via WebSocket
 - Forward MCP messages bidirectionally between clients and remote servers
+- Support multiple concurrent client connections
+
+## Architecture
+
+The proxy provides two distinct WebSocket endpoints:
+
+- **Client Endpoint** (`/client/ws`): For web application connections
+- **Remote Container Endpoint** (`/remote-container/ws`): For remote container connections
+
+Messages flow as follows:
+1. Web clients connect to `/client/ws`
+2. Remote containers connect to `/remote-container/ws`
+3. Client messages are forwarded to the remote container
+4. Remote container responses are broadcast to all connected clients
 
 ## Project Structure
 
 ```
 mcp-proxy/
 ├── src/
-│   └── index.ts          # Main worker entry point
+│   ├── index.ts          # Main worker entry point
+│   ├── server-proxy.ts   # Proxy implementation with dual endpoints
+│   └── mcp-server-proxy.ts # Message forwarding logic
 ├── package.json          # Project dependencies and scripts
 ├── wrangler.jsonc        # Cloudflare Workers configuration
 ├── tsconfig.json         # TypeScript configuration
@@ -51,15 +67,49 @@ npm run deploy
 
 Once deployed, the worker provides:
 
-- **Main endpoint**: Routes requests to the MCP Server Proxy Durable Object
+- **Client endpoint**: `/client/ws` - WebSocket endpoint for web application connections
 - **Remote container endpoint**: `/remote-container/ws` - WebSocket endpoint for connecting remote containers
 
-## Architecture
+## Client Connection
 
-The proxy uses:
-- **McpServerProxyDO**: A Durable Object that extends the base MCP server functionality
-- **WebSocket connections**: For real-time bidirectional communication
-- **Message forwarding**: Transparent proxy between clients and remote MCP servers
+Web applications should connect to the client endpoint:
+
+```javascript
+const ws = new WebSocket('ws://localhost:6050/client/ws');
+
+// Send messages to remote container
+ws.send(JSON.stringify({
+  type: 'AddServerRequest',
+  name: 'example-server',
+  command: 'python',
+  args: ['-m', 'example_mcp_server']
+}));
+
+// Receive responses from remote container
+ws.onmessage = (event) => {
+  const response = JSON.parse(event.data);
+  console.log('Received from remote container:', response);
+};
+```
+
+## Remote Container Connection
+
+Remote containers should connect to the remote container endpoint:
+
+```javascript
+const ws = new WebSocket('ws://localhost:6050/remote-container/ws');
+
+// Handle messages from clients
+ws.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  // Process client requests and send responses
+  ws.send(JSON.stringify({
+    type: 'AddServerResponse',
+    success: true,
+    // ... response data
+  }));
+};
+```
 
 ## Dependencies
 

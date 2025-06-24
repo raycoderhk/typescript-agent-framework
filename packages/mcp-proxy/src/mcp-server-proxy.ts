@@ -5,6 +5,11 @@ import { IMcpServer } from '@xava-labs/mcp/src/mcp/mcp-server-interface';
 /**
  * Simple MCP Server Proxy that acts like McpServer but forwards messages to a remote container
  * This implements the minimal IMcpServer interface used by McpServerDO
+ * 
+ * CONNECTION STATE MANAGEMENT:
+ * - isConnected() is the SINGLE SOURCE OF TRUTH for connection state checks
+ * - Handles hibernated WebSocket connections properly for Cloudflare Workers
+ * - All methods should use isConnected() rather than manual connection checks
  */
 export class McpServerProxy implements IMcpServer {
   private proxyConnection: WebSocket | null = null;
@@ -45,26 +50,16 @@ export class McpServerProxy implements IMcpServer {
   }
 
   /**
-   * Check if the proxy is currently connected
+   * Check if the proxy is currently connected - Single Source of Truth for connection state
+   * 
+   * IMPORTANT: This is the single source of truth for connection state!
+   * All other methods should use this method rather than checking connection state manually.
+   * Properly handles hibernated WebSocket connections in Cloudflare Workers.
    */
   public isConnected(): boolean {
     const hasConnection = this.proxyConnection !== null;
     const isMarkedConnected = this.isProxyConnected;
     const readyState = this.proxyConnection?.readyState;
-    
-    const timeSinceConnection = Date.now() - this.lastConnectionTime;
-    
-    console.log('🔍 Connection check:', {
-      hasConnection,
-      isMarkedConnected,
-      readyState,
-      readyStateText: readyState === 0 ? 'CONNECTING' : 
-                     readyState === 1 ? 'OPEN' : 
-                     readyState === 2 ? 'CLOSING' : 
-                     readyState === 3 ? 'CLOSED' : 'UNKNOWN',
-      lastConnectionTime: new Date(this.lastConnectionTime).toISOString(),
-      timeSinceConnectionMs: timeSinceConnection
-    });
     
     // For hibernated WebSockets in Cloudflare Workers, readyState might not be reliable
     // So we'll primarily rely on our internal tracking, but also check for obviously closed states
@@ -77,7 +72,48 @@ export class McpServerProxy implements IMcpServer {
     // and not in a definitely closed state
     const actuallyConnected = hasConnection && isMarkedConnected && readyState !== 3;
     
+    // Only log detailed connection info if there's an issue or state change
+    if (!actuallyConnected || readyState !== 1) {
+      const timeSinceConnection = Date.now() - this.lastConnectionTime;
+      console.log('🔍 Connection check (detailed):', {
+        hasConnection,
+        isMarkedConnected,
+        readyState,
+        readyStateText: readyState === 0 ? 'CONNECTING' : 
+                       readyState === 1 ? 'OPEN' : 
+                       readyState === 2 ? 'CLOSING' : 
+                       readyState === 3 ? 'CLOSED' : 'UNKNOWN',
+        lastConnectionTime: new Date(this.lastConnectionTime).toISOString(),
+        timeSinceConnectionMs: timeSinceConnection,
+        result: actuallyConnected
+      });
+    }
+    
     return actuallyConnected;
+  }
+
+  /**
+   * Debug helper to force-log detailed connection state
+   * Useful for troubleshooting connection issues
+   */
+  public debugConnectionState(): void {
+    const hasConnection = this.proxyConnection !== null;
+    const isMarkedConnected = this.isProxyConnected;
+    const readyState = this.proxyConnection?.readyState;
+    const timeSinceConnection = Date.now() - this.lastConnectionTime;
+    
+    console.log('🐛 DEBUG - Full connection state:', {
+      hasConnection,
+      isMarkedConnected,
+      readyState,
+      readyStateText: readyState === 0 ? 'CONNECTING' : 
+                     readyState === 1 ? 'OPEN' : 
+                     readyState === 2 ? 'CLOSING' : 
+                     readyState === 3 ? 'CLOSED' : 'UNKNOWN',
+      lastConnectionTime: new Date(this.lastConnectionTime).toISOString(),
+      timeSinceConnectionMs: timeSinceConnection,
+      isConnectedResult: this.isConnected()
+    });
   }
 
   /**
@@ -136,26 +172,27 @@ export class McpServerProxy implements IMcpServer {
   }
 
   /**
-   * Forward a` message to the remote proxy
+   * Forward a message to the remote proxy
    */
   public forwardToProxy(data: string | ArrayBuffer): void {
     console.log('📤 Attempting to forward message to proxy');
-    console.log('🔍 Proxy state - isProxyConnected:', this.isProxyConnected);
-    console.log('🔍 Proxy state - proxyConnection exists:', !!this.proxyConnection);
     
-    if (this.proxyConnection) {
-      console.log('🔍 Proxy WebSocket readyState:', this.proxyConnection.readyState);
-    }
+    // Use the single source of truth for connection checking
+    const isConnected = this.isConnected();
+    console.log('🔍 Connection status from isConnected():', isConnected);
     
-    if (this.isProxyConnected && this.proxyConnection) {
+    if (isConnected && this.proxyConnection) {
       try {
         console.log('✅ Sending message to proxy WebSocket');
         this.proxyConnection.send(data);
       } catch (error) {
-        console.error('Error sending message to proxy:', error);
+        console.error('❌ Error sending message to proxy:', error);
+        // If sending fails, update our connection state
+        this.isProxyConnected = false;
       }
     } else {
-      console.warn('Cannot forward message - proxy not connected:', data);
+      console.warn('❌ Cannot forward message - proxy not connected:', 
+        typeof data === 'string' ? data.substring(0, 100) + '...' : '[Binary Data]');
     }
   }
 } 

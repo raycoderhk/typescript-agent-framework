@@ -286,6 +286,10 @@ app.get('/', (c) => {
 let globalWs: WebSocket | null = null;
 let isConnecting = false;
 
+// Operation lock to prevent race conditions
+let operationInProgress = false;
+let operationType: string | null = null;
+
 // Connect to MCP proxy as WebSocket client
 async function connectToMcpProxy() {
   if (isConnecting) {
@@ -344,15 +348,41 @@ async function connectToMcpProxy() {
         // Validate message structure
         const validatedMessage = WebSocketMessageSchema.parse(messageData)
         
+        // Check if we should defer list requests during add/delete operations
+        if (validatedMessage.verb === 'list' && operationInProgress) {
+          console.log(`⏳ Deferring list request - ${operationType} operation in progress`)
+          // Don't process list requests while add/delete is in progress
+          // The auto-sent list after the operation will provide the updated state
+          return;
+        }
+        
         let result: any
         
         // Handle different verbs
         switch (validatedMessage.verb) {
           case 'add':
-            result = await handleAddCommand(validatedMessage.data)
+            operationInProgress = true;
+            operationType = 'add';
+            console.log('🔒 Starting add operation - locking list requests')
+            try {
+              result = await handleAddCommand(validatedMessage.data)
+            } finally {
+              operationInProgress = false;
+              operationType = null;
+              console.log('🔓 Add operation completed - unlocking list requests')
+            }
             break
           case 'delete':
-            result = await handleDeleteCommand(validatedMessage.data)
+            operationInProgress = true;
+            operationType = 'delete';
+            console.log('🔒 Starting delete operation - locking list requests')
+            try {
+              result = await handleDeleteCommand(validatedMessage.data)
+            } finally {
+              operationInProgress = false;
+              operationType = null;
+              console.log('🔓 Delete operation completed - unlocking list requests')
+            }
             break
           case 'list':
             result = await handleListCommand()
@@ -364,14 +394,55 @@ async function connectToMcpProxy() {
             }
         }
         
-        // Send response back to MCP proxy
-        ws.send(JSON.stringify({
-          verb: validatedMessage.verb,
-          ...result,
-          timestamp: new Date().toISOString()
-        }))
+        // Send response back to MCP proxy with error handling
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.warn('⚠️ Cannot send response - WebSocket not open, readyState:', ws.readyState)
+          console.log('🔄 Triggering reconnection due to closed WebSocket')
+          setTimeout(() => connectToMcpProxy(), 100)
+          return;
+        }
         
-        console.log('📤 Sent response to MCP proxy')
+        try {
+          ws.send(JSON.stringify({
+            verb: validatedMessage.verb,
+            ...result,
+            timestamp: new Date().toISOString()
+          }))
+          console.log('📤 Sent response to MCP proxy')
+        } catch (error) {
+          console.error('❌ Failed to send response to MCP proxy:', error)
+          console.log('🔄 Connection may be broken, attempting reconnect...')
+          // Trigger immediate reconnection
+          setTimeout(() => connectToMcpProxy(), 100)
+          return; // Don't try to send auto-updated list if initial send failed
+        }
+        
+        // Auto-send updated list after successful add/delete operations
+        if ((validatedMessage.verb === 'add' || validatedMessage.verb === 'delete') && result.success) {
+          console.log('🔄 Auto-sending updated server list after successful', validatedMessage.verb)
+          
+          if (ws.readyState !== WebSocket.OPEN) {
+            console.warn('⚠️ Cannot send auto-updated list - WebSocket not open, readyState:', ws.readyState)
+            console.log('🔄 Triggering reconnection due to closed WebSocket during list update')
+            setTimeout(() => connectToMcpProxy(), 100)
+            return;
+          }
+          
+          try {
+            const listResult = await handleListCommand()
+            ws.send(JSON.stringify({
+              verb: 'list',
+              ...listResult,
+              timestamp: new Date().toISOString()
+            }))
+            console.log('📤 Sent auto-updated server list')
+          } catch (error) {
+            console.error('❌ Error sending auto-updated list:', error)
+            console.log('🔄 Connection may be broken during list update, attempting reconnect...')
+            // Trigger immediate reconnection
+            setTimeout(() => connectToMcpProxy(), 100)
+          }
+        }
         
       } catch (error) {
         console.error('❌ Error processing message from MCP proxy:', error)
@@ -453,3 +524,57 @@ serve({
 
 // Connect to MCP proxy
 connectToMcpProxy()
+
+// Graceful shutdown handling
+function gracefulShutdown(signal: string) {
+  console.log(`\n🛑 Received ${signal} signal, initiating graceful shutdown...`)
+  
+  if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+    console.log('📤 Sending shutdown notification to MCP proxy')
+    
+    try {
+      // Send goodbye message to proxy
+      globalWs.send(JSON.stringify({
+        type: 'client_shutdown',
+        clientId: 'mcp-package-manager',
+        message: 'Server shutting down gracefully',
+        timestamp: new Date().toISOString()
+      }))
+      
+      // Give a moment for the message to send, then close
+      setTimeout(() => {
+        console.log('🔌 Closing WebSocket connection')
+        globalWs?.close(1000, 'Server shutdown')
+        globalWs = null
+        
+        console.log('✅ Graceful shutdown complete')
+        process.exit(0)
+      }, 500)
+      
+    } catch (error) {
+      console.error('❌ Error during graceful shutdown:', error)
+      globalWs?.close()
+      globalWs = null
+      process.exit(1)
+    }
+  } else {
+    console.log('✅ No active WebSocket connection, exiting immediately')
+    process.exit(0)
+  }
+}
+
+// Handle process signals for graceful shutdown
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')) // For nodemon
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error)
+  gracefulShutdown('UNCAUGHT_EXCEPTION')
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason)
+  gracefulShutdown('UNHANDLED_REJECTION')
+})

@@ -8,7 +8,8 @@
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2025-04-01",
 	"compatibility_flags": [
-		"nodejs_compat"
+		"nodejs_compat",
+		"nodejs_compat_populate_process_env"
 	],
 	"assets": {
 		"binding": "ASSETS",
@@ -22,25 +23,14 @@
 			"binding": "MCP_PROXY",
 			"service": "mcp-proxy"
 		}
-	]
-	/**
-	 * Smart Placement
-	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": { "mode": "smart" },
-
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-
+	],
 	/**
 	 * Environment Variables
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 */
-	// "vars": { "MY_VARIABLE": "production_value" },
+	"vars": { 
+		"NEXT_PUBLIC_MCP_PROXY_WS_URL": "ws://localhost:6050/client/ws" 
+	}
 	/**
 	 * Note: Use secrets to store sensitive data.
 	 * https://developers.cloudflare.com/workers/configuration/secrets/

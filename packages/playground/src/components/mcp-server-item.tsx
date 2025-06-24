@@ -7,6 +7,7 @@ import { MCPServer } from "@/types/mcp-server";
 export interface MCPServerItemProps {
   server: MCPServer;
   isEnabled?: boolean;
+  isLoading?: boolean;
   onToggle?: (server: MCPServer, enabled: boolean) => void;
   className?: string;
 }
@@ -14,6 +15,7 @@ export interface MCPServerItemProps {
 export function MCPServerItem({
   server,
   isEnabled = false,
+  isLoading = false,
   onToggle,
   className
 }: MCPServerItemProps) {
@@ -37,7 +39,8 @@ export function MCPServerItem({
     <div
       className={cn(
         "p-4 rounded-lg border transition-all duration-200 hover:border-[rgba(255,255,255,0.2)] relative bg-[#17181A] border-[rgba(255,255,255,0.1)]",
-        isEnabled && "ring-2 ring-[rgba(114,255,192,0.3)] border-[rgba(114,255,192,0.3)]",
+        isEnabled && !isLoading && "ring-2 ring-[rgba(114,255,192,0.3)] border-[rgba(114,255,192,0.3)]",
+        isLoading && "ring-2 ring-yellow-400/40 border-yellow-400/40 shadow-lg shadow-yellow-400/20",
         className
       )}
     >
@@ -67,19 +70,28 @@ export function MCPServerItem({
           {/* Toggle Switch */}
           <button
             onClick={handleToggle}
+            disabled={isLoading}
             className={cn(
-              "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
-              isEnabled 
-                ? "bg-[#72FFC0]" 
-                : "bg-[rgba(255,255,255,0.1)]"
+              "relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
+              isLoading && "animate-pulse ring-2 ring-yellow-400/60 shadow-lg shadow-yellow-400/30",
+              isEnabled && !isLoading && "bg-[#72FFC0]",
+              isLoading && "bg-yellow-400",
+              !isEnabled && !isLoading && "bg-[rgba(255,255,255,0.1)]",
+              isLoading && "cursor-not-allowed"
             )}
           >
             <span
               className={cn(
-                "inline-block h-3 w-3 transform rounded-full bg-white transition-transform",
-                isEnabled ? "translate-x-5" : "translate-x-1"
+                "inline-block h-3 w-3 transform rounded-full transition-all duration-300",
+                isLoading && "bg-white animate-spin border border-yellow-600",
+                !isLoading && "bg-white",
+                isEnabled && !isLoading ? "translate-x-5" : "translate-x-1"
               )}
-            />
+            >
+              {isLoading && (
+                <div className="absolute inset-0 rounded-full border-t-2 border-yellow-600 animate-spin" />
+              )}
+            </span>
           </button>
         </div>
       </div>

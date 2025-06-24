@@ -13,30 +13,7 @@ import {
   MCPServerSearch 
 } from "@/lib/search";
 import { mockMCPDirectory } from "@/data/mock-mcp-servers";
-
-interface ApiResponse {
-  success: boolean;
-  error?: string;
-  message?: string;
-}
-
-interface ListApiResponse extends ApiResponse {
-  data?: Array<{
-    id: number;
-    name: string;
-    command: string;
-    args: string[];
-    env: string[];
-    installedAt: string;
-  }>;
-  count?: number;
-}
-
-interface StatusApiResponse extends ApiResponse {
-  connected: boolean;
-  message?: string;
-  timestamp?: string;
-}
+import { useMcpServerManager } from "@/hooks/use-mcp-server-manager";
 
 export interface MCPServerDirectoryProps {
   className?: string;
@@ -54,43 +31,25 @@ export function MCPServerDirectory({
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [searchInstance, setSearchInstance] = useState<MCPServerSearch | null>(null);
-  const [installedServers, setInstalledServers] = useState<Set<string>>(new Set());
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [connectionStatus, setConnectionStatus] = useState<string>('Checking...');
 
-  // Check proxy connection status
-  const checkConnectionStatus = async () => {
-    try {
-      const response = await fetch('/api/mcp-servers/status');
-      const result = await response.json() as StatusApiResponse;
-      
-      setIsConnected(result.connected);
-      setConnectionStatus(result.connected ? 'Connected' : 'Disconnected');
-      
-      return result.connected;
-    } catch (error) {
-      console.error('Error checking connection status:', error);
-      setIsConnected(false);
-      setConnectionStatus('Error');
-      return false;
-    }
-  };
+  // Use the WebSocket-based MCP server manager
+  const { 
+    servers: installedMcpServers, 
+    connected: isConnected, 
+    addServer, 
+    deleteServer,
+    isServerLoading
+  } = useMcpServerManager();
 
-  // Fetch list of installed servers from the API
-  const fetchInstalledServers = async () => {
-    try {
-      const response = await fetch('/api/mcp-servers');
-      const result = await response.json() as ListApiResponse;
-      
-      if (result.success && result.data) {
-        const installedIds = new Set(result.data.map(server => server.name));
-        setInstalledServers(installedIds);
-        onServerCountChange?.(installedIds.size);
-      }
-    } catch (error) {
-      console.error('Error fetching installed servers:', error);
-    }
-  };
+  // Create a set of installed server IDs for quick lookup
+  const installedServers = useMemo(() => {
+    return new Set(installedMcpServers.map(server => server.uniqueName));
+  }, [installedMcpServers]);
+
+  // Update server count when installed servers change
+  useEffect(() => {
+    onServerCountChange?.(installedServers.size);
+  }, [installedServers.size, onServerCountChange]);
 
   // Initialize data and search
   useEffect(() => {
@@ -112,27 +71,10 @@ export function MCPServerDirectory({
       const search = initializeSearch(directory.servers);
       setSearchInstance(search);
       
-      // Check connection status first
-      const connected = await checkConnectionStatus();
-      
-      // Only fetch installed servers if connected
-      if (connected) {
-        await fetchInstalledServers();
-      }
-      
       setIsLoading(false);
     };
     
     initializeData();
-  }, []);
-
-  // Periodic status check
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      await checkConnectionStatus();
-    }, 10000); // Check every 10 seconds
-
-    return () => clearInterval(interval);
   }, []);
 
   // Get filtered and searched servers
@@ -162,59 +104,35 @@ export function MCPServerDirectory({
 
   const handleServerToggle = async (server: MCPServer, enabled: boolean) => {
     if (enabled) {
-      // Call the add API
       try {
-        const response = await fetch('/api/mcp-servers', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            uniqueName: server.id,
-            command: server.mcpServerConfig.command,
-            args: server.mcpServerConfig.args,
-            env: server.mcpServerConfig.env
-          })
+        const success = await addServer({
+          uniqueName: server.id,
+          command: server.mcpServerConfig.command,
+          args: server.mcpServerConfig.args,
+          env: server.mcpServerConfig.env || {}
         });
-
-        const result: ApiResponse = await response.json();
         
-        if (result.success) {
+        if (success) {
           console.log(`Successfully added MCP server: ${server.name}`);
-          // Refresh the list of installed servers
-          await fetchInstalledServers();
           onServerToggle?.(server, enabled);
         } else {
-          console.error(`Failed to add MCP server: ${result.error}`);
-          alert(`Failed to add MCP server: ${result.error}`);
+          console.error(`Failed to add MCP server: ${server.name}`);
+          alert(`Failed to add MCP server: ${server.name}`);
         }
       } catch (error) {
         console.error('Error adding MCP server:', error);
         alert('Failed to add MCP server due to network error');
       }
     } else {
-      // Call the delete API
       try {
-        const response = await fetch('/api/mcp-servers', {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            uniqueName: server.id
-          })
-        });
-
-        const result: ApiResponse = await response.json();
+        const success = await deleteServer(server.id);
         
-        if (result.success) {
+        if (success) {
           console.log(`Successfully removed MCP server: ${server.name}`);
-          // Refresh the list of installed servers
-          await fetchInstalledServers();
           onServerToggle?.(server, enabled);
         } else {
-          console.error(`Failed to remove MCP server: ${result.error}`);
-          alert(`Failed to remove MCP server: ${result.error}`);
+          console.error(`Failed to remove MCP server: ${server.name}`);
+          alert(`Failed to remove MCP server: ${server.name}`);
         }
       } catch (error) {
         console.error('Error removing MCP server:', error);
@@ -266,7 +184,7 @@ export function MCPServerDirectory({
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className="text-sm text-white/60">
-                Local Tools {connectionStatus}
+                Local Tools {isConnected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
           </div>
@@ -364,6 +282,7 @@ export function MCPServerDirectory({
                 key={server.id}
                 server={server}
                 isEnabled={installedServers.has(server.id)}
+                isLoading={isServerLoading(server.id)}
                 onToggle={handleServerToggle}
               />
             ))}
