@@ -6,8 +6,14 @@ import { dirname } from 'path'
 import { z } from 'zod'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { WebSocketTransport } from '@xava-labs/mcp/dist/mcp/websocket-transport.js'
+import { WebSocketTransport } from '@xava-labs/mcp/dist/mcp/src/mcp/websocket-transport.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ListPromptsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js"
 import { createPackageRepository, PackageRepository } from './persistence/index.js'
 
 // Environment configuration
@@ -20,6 +26,9 @@ mkdirSync(dirname(DB_PATH), { recursive: true })
 
 // Initialize package repository
 const packageRepo: PackageRepository = createPackageRepository('sqlite', DB_PATH)
+
+// MCP Client Management
+const mcpClients = new Map<string, Client>()
 
 // Validation schemas
 const AddRequestSchema = z.object({
@@ -38,7 +47,96 @@ const WebSocketMessageSchema = z.object({
   data: z.any().optional()
 })
 
-// Helper function to test MCP server connection
+// Enhanced message type detection schemas
+const McpMessageSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
+  method: z.string().optional(),
+  params: z.any().optional(),
+  result: z.any().optional(),
+  error: z.any().optional()
+})
+
+const AdminVerbMessageSchema = z.object({
+  verb: z.enum(['add', 'delete', 'list']),
+  data: z.any().optional(),
+  timestamp: z.string().optional(),
+  clientId: z.string().optional()
+})
+
+// Message type detection functions
+function isMcpMessage(message: any): boolean {
+  try {
+    McpMessageSchema.parse(message)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isAdminVerbMessage(message: any): boolean {
+  try {
+    AdminVerbMessageSchema.parse(message)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Helper function to connect to an MCP server and maintain persistent connection
+async function connectToMcpServer(
+  uniqueName: string,
+  command: string, 
+  args: string[], 
+  env: Record<string, string>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Create transport with environment variables
+    const transport = new StdioClientTransport({
+      command,
+      args,
+      env: { ...(process.env as Record<string, string>), ...env }
+    })
+
+    // Create client
+    const client = new Client({
+      name: `mcp-proxy-client-${uniqueName}`,
+      version: "1.0.0"
+    })
+
+    // Connect
+    await client.connect(transport)
+    
+    // Store the client for later use
+    mcpClients.set(uniqueName, client)
+    
+    console.log(`✅ Connected to MCP server: ${uniqueName}`)
+    return { success: true }
+  } catch (error) {
+    console.error(`❌ Failed to connect to MCP server ${uniqueName}:`, error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Connection failed' 
+    }
+  }
+}
+
+// Helper function to disconnect from an MCP server
+async function disconnectFromMcpServer(uniqueName: string): Promise<void> {
+  const client = mcpClients.get(uniqueName)
+  if (client) {
+    try {
+      await client.close()
+      mcpClients.delete(uniqueName)
+      console.log(`🔌 Disconnected from MCP server: ${uniqueName}`)
+    } catch (error) {
+      console.warn(`⚠️ Error disconnecting from ${uniqueName}:`, error)
+      mcpClients.delete(uniqueName) // Remove it anyway
+    }
+  }
+}
+
+// Helper function to test MCP server connection (temporary, for validation)
 async function testMcpServerConnection(
   command: string, 
   args: string[], 
@@ -123,6 +221,31 @@ async function testMcpServerConnection(
   }
 }
 
+// Initialize existing servers from database
+async function initializeExistingServers() {
+  try {
+    const packages = await packageRepo.findAll()
+    console.log(`🔄 Initializing ${packages.length} existing MCP servers...`)
+    
+    for (const pkg of packages) {
+      const result = await connectToMcpServer(
+        pkg.uniqueName,
+        pkg.command,
+        pkg.args,
+        pkg.env
+      )
+      
+      if (!result.success) {
+        console.warn(`⚠️ Failed to connect to existing server ${pkg.uniqueName}: ${result.error}`)
+      }
+    }
+    
+    console.log(`✅ Initialized ${mcpClients.size}/${packages.length} MCP servers`)
+  } catch (error) {
+    console.error('❌ Error initializing existing servers:', error)
+  }
+}
+
 // WebSocket message handlers
 async function handleAddCommand(data: any) {
   try {
@@ -174,6 +297,18 @@ async function handleAddCommand(data: any) {
       env: validatedData.env
     })
     
+    // Create persistent connection for proxy functionality
+    const connectionResult = await connectToMcpServer(
+      pkg.uniqueName,
+      pkg.command,
+      pkg.args,
+      pkg.env
+    )
+    
+    if (!connectionResult.success) {
+      console.warn(`⚠️ Failed to create persistent connection for ${pkg.uniqueName}: ${connectionResult.error}`)
+    }
+    
     console.log(`Successfully added MCP server: ${pkg.uniqueName}`)
     
     return {
@@ -210,6 +345,9 @@ async function handleAddCommand(data: any) {
 async function handleDeleteCommand(data: any) {
   try {
     const validatedData = DeleteRequestSchema.parse(data)
+    
+    // Disconnect from the MCP server first
+    await disconnectFromMcpServer(validatedData['unique-name'])
     
     const removed = await packageRepo.deleteByUniqueName(validatedData['unique-name'])
     
@@ -256,7 +394,8 @@ async function handleListCommand() {
         command: pkg.command,
         args: pkg.args,
         env: Object.keys(pkg.env),
-        installedAt: pkg.installedAt
+        installedAt: pkg.installedAt,
+        connected: mcpClients.has(pkg.uniqueName)
       })),
       count
     }
@@ -278,7 +417,8 @@ app.get('/', (c) => {
     status: 'ok', 
     message: 'MCP WebSocket Server',
     websocket: `ws://localhost:${PORT}/ws`,
-    version: '0.1.0'
+    version: '0.1.0',
+    activeServers: mcpClients.size
   })
 })
 
@@ -290,7 +430,129 @@ let isConnecting = false;
 let operationInProgress = false;
 let operationType: string | null = null;
 
-// Connect to MCP proxy as WebSocket client
+// Enhanced admin verb message handler
+async function handleAdminVerbMessage(messageData: any, ws: WebSocket) {
+  try {
+    // Validate message structure
+    const validatedMessage = AdminVerbMessageSchema.parse(messageData)
+    
+    // Check if we should defer list requests during add/delete operations
+    if (validatedMessage.verb === 'list' && operationInProgress) {
+      console.log(`⏳ Deferring list request - ${operationType} operation in progress`)
+      // Don't process list requests while add/delete is in progress
+      // The auto-sent list after the operation will provide the updated state
+      return;
+    }
+    
+    let result: any
+    
+    // Handle different verbs
+    switch (validatedMessage.verb) {
+      case 'add':
+        operationInProgress = true;
+        operationType = 'add';
+        console.log('🔒 Starting add operation - locking list requests')
+        try {
+          result = await handleAddCommand(validatedMessage.data)
+        } finally {
+          operationInProgress = false;
+          operationType = null;
+          console.log('🔓 Add operation completed - unlocking list requests')
+        }
+        break
+      case 'delete':
+        operationInProgress = true;
+        operationType = 'delete';
+        console.log('🔒 Starting delete operation - locking list requests')
+        try {
+          result = await handleDeleteCommand(validatedMessage.data)
+        } finally {
+          operationInProgress = false;
+          operationType = null;
+          console.log('🔓 Delete operation completed - unlocking list requests')
+        }
+        break
+      case 'list':
+        result = await handleListCommand()
+        break
+      default:
+        result = {
+          success: false,
+          error: `Unknown verb: ${validatedMessage.verb}`
+        }
+    }
+    
+    // Send response back to MCP proxy with error handling
+    if (ws.readyState !== WebSocket.OPEN) {
+      console.warn('⚠️ Cannot send response - WebSocket not open, readyState:', ws.readyState)
+      console.log('🔄 Triggering reconnection due to closed WebSocket')
+      setTimeout(() => connectToMcpProxy(), 100)
+      return;
+    }
+    
+    try {
+      ws.send(JSON.stringify({
+        verb: validatedMessage.verb,
+        ...result,
+        timestamp: new Date().toISOString()
+      }))
+      console.log('📤 Sent admin response to MCP proxy')
+    } catch (error) {
+      console.error('❌ Failed to send admin response to MCP proxy:', error)
+      console.log('🔄 Connection may be broken, attempting reconnect...')
+      // Trigger immediate reconnection
+      setTimeout(() => connectToMcpProxy(), 100)
+      return; // Don't try to send auto-updated list if initial send failed
+    }
+    
+    // Auto-send updated list after successful add/delete operations
+    if ((validatedMessage.verb === 'add' || validatedMessage.verb === 'delete') && result.success) {
+      console.log('🔄 Auto-sending updated server list after successful', validatedMessage.verb)
+      
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.warn('⚠️ Cannot send auto-updated list - WebSocket not open, readyState:', ws.readyState)
+        console.log('🔄 Triggering reconnection due to closed WebSocket during list update')
+        setTimeout(() => connectToMcpProxy(), 100)
+        return;
+      }
+      
+      try {
+        const listResult = await handleListCommand()
+        ws.send(JSON.stringify({
+          verb: 'list',
+          ...listResult,
+          timestamp: new Date().toISOString()
+        }))
+        console.log('📤 Sent auto-updated server list')
+      } catch (error) {
+        console.error('❌ Error sending auto-updated list:', error)
+        console.log('🔄 Connection may be broken during list update, attempting reconnect...')
+        // Trigger immediate reconnection
+        setTimeout(() => connectToMcpProxy(), 100)
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ Error processing admin verb message from MCP proxy:', error)
+    
+    let errorMessage = 'Failed to process admin command'
+    let details = undefined
+    
+    if (error instanceof z.ZodError) {
+      errorMessage = 'Invalid admin message format'
+      details = error.errors
+    }
+    
+    ws.send(JSON.stringify({
+      success: false,
+      error: errorMessage,
+      details,
+      timestamp: new Date().toISOString()
+    }))
+  }
+}
+
+// Updated connectToMcpProxy function with enhanced message handling
 async function connectToMcpProxy() {
   if (isConnecting) {
     console.log('⚠️ Connection already in progress, skipping...')
@@ -302,30 +564,46 @@ async function connectToMcpProxy() {
     return;
   }
   
+  let transport: any = null; // Declare at function scope
+  
   try {
     isConnecting = true;
     console.log(`Connecting to MCP proxy at: ${MCP_PROXY_URL}`)
     console.log(`💾 Database: ${DB_PATH}`)
     
-    // Connect to MCP proxy as WebSocket client
     const ws = new WebSocket(MCP_PROXY_URL)
     globalWs = ws;
-
-    // Use this MCP server as the frontfacing proxy to other MCP servers
-    const mcpServer = new Server({
-      name: 'mcp-proxy-server',
-      version: '1.0.0'
-    });
-
-    const transport = new WebSocketTransport(ws as any, "fake-id");
-    mcpServer.connect(transport);
 
     ws.on('open', () => {
       isConnecting = false;
       console.log('✅ Connected to MCP proxy server')
       console.log('🔍 WebSocket readyState:', ws.readyState)
       
-      // Send an initial identification message
+      const mcpServer = new Server({
+        name: 'mcp-proxy-server',
+        version: '1.0.0'
+      }, {
+        capabilities: {
+          tools: {},
+          resources: {},
+          prompts: {}
+        }
+      });
+
+      setupMcpServerHandlers(mcpServer);
+
+      transport = new WebSocketTransport(ws as any, "fake-id");
+      
+      console.log('🔍 Connecting MCP server to transport...')
+      mcpServer.connect(transport);
+      console.log('🔍 MCP server connected to transport')
+      
+      // Add error handling to the server
+      mcpServer.onerror = (error: any) => {
+        console.error('❌ MCP Server error:', error)
+      }
+      
+      // Send initial identification message
       ws.send(JSON.stringify({
         type: 'client_ready',
         clientId: 'mcp-package-manager',
@@ -334,136 +612,50 @@ async function connectToMcpProxy() {
     })
     
     ws.on('message', async (data: Buffer) => {
-      const messageData = JSON.parse(data.toString())
-      console.log('📨 Received message from MCP proxy:', messageData)
-
-      // Doesn't contain verb, then process it as a MCP message
-      if (!messageData.verb) {
-        transport.handleMessage(messageData)
+      let messageData: any;
+      
+      try {
+        messageData = JSON.parse(data.toString())
+      } catch (error) {
+        console.error('❌ Failed to parse WebSocket message as JSON:', error)
+        ws.send(JSON.stringify({
+          success: false,
+          error: 'Invalid JSON format',
+          timestamp: new Date().toISOString()
+        }))
         return;
       }
 
-      try {
-        
-        // Validate message structure
-        const validatedMessage = WebSocketMessageSchema.parse(messageData)
-        
-        // Check if we should defer list requests during add/delete operations
-        if (validatedMessage.verb === 'list' && operationInProgress) {
-          console.log(`⏳ Deferring list request - ${operationType} operation in progress`)
-          // Don't process list requests while add/delete is in progress
-          // The auto-sent list after the operation will provide the updated state
-          return;
+      console.log('📨 Received message from MCP proxy:', messageData)
+
+      // Simplified message routing - only two types
+      if (isMcpMessage(messageData)) {
+        if (transport) {
+          console.log('🔄 Processing MCP protocol message:', messageData.method || 'response')
+          console.log('🔍 Transport exists, calling handleMessage...')
+          transport.handleMessage(data.toString())
+          console.log('🔍 handleMessage completed')
+        } else {
+          console.log('❌ Transport is null, cannot handle MCP message')
         }
-        
-        let result: any
-        
-        // Handle different verbs
-        switch (validatedMessage.verb) {
-          case 'add':
-            operationInProgress = true;
-            operationType = 'add';
-            console.log('🔒 Starting add operation - locking list requests')
-            try {
-              result = await handleAddCommand(validatedMessage.data)
-            } finally {
-              operationInProgress = false;
-              operationType = null;
-              console.log('🔓 Add operation completed - unlocking list requests')
-            }
-            break
-          case 'delete':
-            operationInProgress = true;
-            operationType = 'delete';
-            console.log('🔒 Starting delete operation - locking list requests')
-            try {
-              result = await handleDeleteCommand(validatedMessage.data)
-            } finally {
-              operationInProgress = false;
-              operationType = null;
-              console.log('🔓 Delete operation completed - unlocking list requests')
-            }
-            break
-          case 'list':
-            result = await handleListCommand()
-            break
-          default:
-          result = {
-              success: false,
-              error: `Unknown verb: ${validatedMessage.verb}`
-            }
-        }
-        
-        // Send response back to MCP proxy with error handling
-        if (ws.readyState !== WebSocket.OPEN) {
-          console.warn('⚠️ Cannot send response - WebSocket not open, readyState:', ws.readyState)
-          console.log('🔄 Triggering reconnection due to closed WebSocket')
-          setTimeout(() => connectToMcpProxy(), 100)
-          return;
-        }
-        
-        try {
-          ws.send(JSON.stringify({
-            verb: validatedMessage.verb,
-            ...result,
-            timestamp: new Date().toISOString()
-          }))
-          console.log('📤 Sent response to MCP proxy')
-        } catch (error) {
-          console.error('❌ Failed to send response to MCP proxy:', error)
-          console.log('🔄 Connection may be broken, attempting reconnect...')
-          // Trigger immediate reconnection
-          setTimeout(() => connectToMcpProxy(), 100)
-          return; // Don't try to send auto-updated list if initial send failed
-        }
-        
-        // Auto-send updated list after successful add/delete operations
-        if ((validatedMessage.verb === 'add' || validatedMessage.verb === 'delete') && result.success) {
-          console.log('🔄 Auto-sending updated server list after successful', validatedMessage.verb)
-          
-          if (ws.readyState !== WebSocket.OPEN) {
-            console.warn('⚠️ Cannot send auto-updated list - WebSocket not open, readyState:', ws.readyState)
-            console.log('🔄 Triggering reconnection due to closed WebSocket during list update')
-            setTimeout(() => connectToMcpProxy(), 100)
-            return;
-          }
-          
-          try {
-            const listResult = await handleListCommand()
-            ws.send(JSON.stringify({
-              verb: 'list',
-              ...listResult,
-              timestamp: new Date().toISOString()
-            }))
-            console.log('📤 Sent auto-updated server list')
-          } catch (error) {
-            console.error('❌ Error sending auto-updated list:', error)
-            console.log('🔄 Connection may be broken during list update, attempting reconnect...')
-            // Trigger immediate reconnection
-            setTimeout(() => connectToMcpProxy(), 100)
-          }
-        }
-        
-      } catch (error) {
-        console.error('❌ Error processing message from MCP proxy:', error)
-        
-        let errorMessage = 'Failed to process message'
-        let details = undefined
-        
-        if (error instanceof z.ZodError) {
-          errorMessage = 'Invalid message format'
-          details = error.errors
-        } else if (error instanceof SyntaxError) {
-          errorMessage = 'Invalid JSON format'
-        }
-        
-        ws.send(JSON.stringify({
-          success: false,
-          error: errorMessage,
-          details,
-          timestamp: new Date().toISOString()
-        }))
+        return;
       }
+
+      if (isAdminVerbMessage(messageData)) {
+        // Handle admin/management verb commands
+        console.log('⚙️ Processing admin verb command:', messageData.verb)
+        await handleAdminVerbMessage(messageData, ws)
+        return;
+      }
+
+      // Unknown message type
+      console.warn('⚠️ Received unknown message type:', messageData)
+      ws.send(JSON.stringify({
+        success: false,
+        error: 'Unknown message type - expected MCP protocol message or admin verb command',
+        receivedKeys: Object.keys(messageData),
+        timestamp: new Date().toISOString()
+      }))
     })
     
     ws.on('close', (code, reason) => {
@@ -504,6 +696,136 @@ async function connectToMcpProxy() {
   }
 }
 
+// Setup MCP server request handlers for proxy functionality
+function setupMcpServerHandlers(mcpServer: Server) {
+  
+  // List tools from all connected upstream servers with namespacing
+  mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+    console.log('🔍 ListTools handler called')
+    const allTools = [];
+    
+    console.log(`🔍 Listing tools from ${mcpClients.size} connected servers`)
+    console.log('🔍 Connected server names:', Array.from(mcpClients.keys()))
+
+    for (const [serverName, client] of mcpClients) {
+      console.log(`🔍 Processing server: ${serverName}`)
+      try {
+        console.log(`🔍 Calling listTools on ${serverName}...`)
+        const response = await client.listTools();
+        console.log(`🔍 ${serverName} returned:`, response)
+        
+        // Prefix each tool name with server name to avoid conflicts
+        const namespacedTools = response.tools.map(tool => ({
+          ...tool,
+          name: `${serverName}__${tool.name}`,
+          description: `[${serverName}] ${tool.description || ''}`
+        }));
+        allTools.push(...namespacedTools);
+        console.log(`  ✅ ${serverName}: ${response.tools.length} tools`)
+      } catch (error) {
+        console.error(`  ❌ Error listing tools from ${serverName}:`, error);
+      }
+    }
+
+    console.log(`📋 Total tools available: ${allTools.length}`)
+    console.log('🔍 Returning tools response...')
+    return { tools: allTools };
+  });
+
+  // List resources from all connected upstream servers with namespacing
+  mcpServer.setRequestHandler(ListResourcesRequestSchema, async () => {
+    const allResources = [];
+
+    console.log(`🔍 Listing resources from ${mcpClients.size} connected servers`)
+
+    for (const [serverName, client] of mcpClients) {
+      try {
+        const response = await client.listResources();
+        // Prefix each resource name with server name
+        const namespacedResources = response.resources.map(resource => ({
+          ...resource,
+          name: `${serverName}__${resource.name}`,
+          description: `[${serverName}] ${resource.description || ''}`,
+          uri: `${serverName}://${resource.uri}` // Namespace the URI too
+        }));
+        allResources.push(...namespacedResources);
+        console.log(`  ✅ ${serverName}: ${response.resources.length} resources`)
+      } catch (error) {
+        console.error(`  ❌ Error listing resources from ${serverName}:`, error);
+      }
+    }
+
+    console.log(`📋 Total resources available: ${allResources.length}`)
+    return { resources: allResources };
+  });
+
+  // List prompts from all connected upstream servers with namespacing
+  mcpServer.setRequestHandler(ListPromptsRequestSchema, async () => {
+    const allPrompts = [];
+
+    console.log(`🔍 Listing prompts from ${mcpClients.size} connected servers`)
+
+    for (const [serverName, client] of mcpClients) {
+      try {
+        const response = await client.listPrompts();
+        // Prefix each prompt name with server name
+        const namespacedPrompts = response.prompts.map(prompt => ({
+          ...prompt,
+          name: `${serverName}__${prompt.name}`,
+          description: `[${serverName}] ${prompt.description || ''}`
+        }));
+        allPrompts.push(...namespacedPrompts);
+        console.log(`  ✅ ${serverName}: ${response.prompts.length} prompts`)
+      } catch (error) {
+        console.error(`  ❌ Error listing prompts from ${serverName}:`, error);
+      }
+    }
+
+    console.log(`📋 Total prompts available: ${allPrompts.length}`)
+    return { prompts: allPrompts };
+  });
+
+  // Route tool calls to appropriate upstream server
+  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const namespacedToolName = request.params.name;
+    
+    console.log(`🔧 Calling tool: ${namespacedToolName}`)
+    
+    // Parse server name and original tool name from namespaced name
+    const parts = namespacedToolName.split('__');
+    if (parts.length !== 2) {
+      const error = `Invalid tool name format: ${namespacedToolName}. Expected format: serverName__toolName`;
+      console.error(`❌ ${error}`)
+      throw new Error(error);
+    }
+    
+    const [serverName, originalToolName] = parts;
+    const client = mcpClients.get(serverName);
+
+    if (!client) {
+      const error = `Server ${serverName} not found for tool ${namespacedToolName}`;
+      console.error(`❌ ${error}`)
+      throw new Error(error);
+    }
+
+    try {
+      console.log(`  🎯 Routing to ${serverName}.${originalToolName}`)
+      // Call the tool with the original (non-namespaced) name
+      const result = await client.callTool({
+        ...request.params,
+        name: originalToolName
+      });
+      console.log(`  ✅ Tool call successful: ${namespacedToolName}`)
+      return result;
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const fullError = `Error calling tool ${namespacedToolName}: ${errorMessage}`;
+      console.error(`  ❌ ${fullError}`)
+      throw new Error(fullError);
+    }
+  });
+}
+
 // Parse command line arguments
 const args = process.argv.slice(2)
 const mcpProxyArgIndex = args.findIndex(arg => arg === '--mcp-proxy' || arg === '-m')
@@ -522,45 +844,69 @@ serve({
   console.log(`📍 Health check: http://localhost:${PORT}`)
 })
 
-// Connect to MCP proxy
-connectToMcpProxy()
+// Initialize existing servers and connect to MCP proxy
+async function startup() {
+  console.log('🔄 Starting up MCP proxy server...')
+  await initializeExistingServers()
+  await connectToMcpProxy()
+  console.log('✅ MCP proxy server startup complete')
+}
+
+startup().catch(console.error)
 
 // Graceful shutdown handling
 function gracefulShutdown(signal: string) {
   console.log(`\n🛑 Received ${signal} signal, initiating graceful shutdown...`)
   
-  if (globalWs && globalWs.readyState === WebSocket.OPEN) {
-    console.log('📤 Sending shutdown notification to MCP proxy')
-    
+  // Close all MCP client connections
+  const shutdownPromises = Array.from(mcpClients.entries()).map(async ([name, client]) => {
     try {
-      // Send goodbye message to proxy
-      globalWs.send(JSON.stringify({
-        type: 'client_shutdown',
-        clientId: 'mcp-package-manager',
-        message: 'Server shutting down gracefully',
-        timestamp: new Date().toISOString()
-      }))
-      
-      // Give a moment for the message to send, then close
-      setTimeout(() => {
-        console.log('🔌 Closing WebSocket connection')
-        globalWs?.close(1000, 'Server shutdown')
-        globalWs = null
-        
-        console.log('✅ Graceful shutdown complete')
-        process.exit(0)
-      }, 500)
-      
+      console.log(`🔌 Closing connection to ${name}`)
+      await client.close()
     } catch (error) {
-      console.error('❌ Error during graceful shutdown:', error)
-      globalWs?.close()
-      globalWs = null
-      process.exit(1)
+      console.warn(`⚠️ Error closing connection to ${name}:`, error)
     }
-  } else {
-    console.log('✅ No active WebSocket connection, exiting immediately')
-    process.exit(0)
-  }
+  })
+  
+  Promise.all(shutdownPromises).then(() => {
+    console.log('✅ All MCP client connections closed')
+    
+    if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+      console.log('📤 Sending shutdown notification to MCP proxy')
+      
+      try {
+        // Send goodbye message to proxy
+        globalWs.send(JSON.stringify({
+          type: 'client_shutdown',
+          clientId: 'mcp-package-manager',
+          message: 'Server shutting down gracefully',
+          timestamp: new Date().toISOString()
+        }))
+        
+        // Give a moment for the message to send, then close
+        setTimeout(() => {
+          console.log('🔌 Closing WebSocket connection')
+          globalWs?.close(1000, 'Server shutdown')
+          globalWs = null
+          
+          console.log('✅ Graceful shutdown complete')
+          process.exit(0)
+        }, 500)
+        
+      } catch (error) {
+        console.error('❌ Error during graceful shutdown:', error)
+        globalWs?.close()
+        globalWs = null
+        process.exit(1)
+      }
+    } else {
+      console.log('✅ No active WebSocket connection, exiting immediately')
+      process.exit(0)
+    }
+  }).catch(error => {
+    console.error('❌ Error during MCP client shutdown:', error)
+    process.exit(1)
+  })
 }
 
 // Handle process signals for graceful shutdown
