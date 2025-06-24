@@ -278,10 +278,21 @@ export class McpServerProxyDO extends McpServerDO {
   override async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer): Promise<void> {
     const attachment = ws.deserializeAttachment() as RemoteContainerAttachment | ClientAttachment | { sessionId: string } | null;
     
+    console.log('🔄 McpServerProxyDO webSocketMessage received:', {
+      dataType: typeof data,
+      dataLength: typeof data === 'string' ? data.length : data.byteLength,
+      attachment: attachment
+    });
+    
     // Handle messages from remote container
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
-      console.log('🔍 Received message from remote container - broadcasting to clients');
+      console.log('🔍 Received message from remote container - processing and broadcasting');
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      console.log('📨 Remote container message preview:', messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''));
+      
+      // First, forward to the MCP proxy for transport handling
+      console.log('🔄 Forwarding message to MCP proxy transport...');
+      this.mcpProxy.handleProxyMessage(data);
       
       // Check if this is a system message (shutdown notification, etc.)
       try {
@@ -303,14 +314,17 @@ export class McpServerProxyDO extends McpServerDO {
         }
       } catch (error) {
         // Not JSON or not a system message, continue with normal broadcast
+        console.log('📨 Message is not JSON or system message, broadcasting as-is');
       }
       
+      // Also broadcast to clients for admin interface
       this.broadcastToClients(messageStr);
     }
     // Handle messages from clients
     else if (attachment && 'isClient' in attachment && attachment.isClient) {
       console.log('🔍 Received message from client - forwarding to remote container');
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      console.log('📨 Client message preview:', messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''));
       
       // Check connection state before forwarding
       if (!this.mcpProxy.isConnected()) {
@@ -338,6 +352,10 @@ export class McpServerProxyDO extends McpServerDO {
     }
     else {
       // Process the message via transport for consistency (MCP client connections)
+      console.log('🔄 Processing message via parent transport (MCP client connection)');
+      console.log('📨 MCP message attachment:', attachment);
+      const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      console.log('📨 MCP message preview:', messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''));
       super.webSocketMessage(ws, data);
     }
   }
@@ -403,34 +421,38 @@ export class McpServerProxyDO extends McpServerDO {
     const path = url.pathname;
     const method = request.method;
 
-    console.log(`McpServerProxyDO: ${method} ${path} (full URL: ${url.toString()})`);
+    console.log(`🌐 McpServerProxyDO: ${method} ${path} (full URL: ${url.toString()})`);
+    console.log('🔍 Request headers:', Object.fromEntries(request.headers.entries()));
 
     // Process client WebSocket upgrade requests
     if (path === CLIENT_WS_ENDPOINT || path.endsWith(CLIENT_WS_ENDPOINT)) {
-      console.log('Handling client WebSocket upgrade request');
+      console.log('🔌 Handling client WebSocket upgrade request');
       return this.processClientConnection(request);
     }
 
     // Process remote container WebSocket upgrade requests
     if (path === REMOTE_CONTAINER_WS_ENDPOINT || path.endsWith(REMOTE_CONTAINER_WS_ENDPOINT)) {
-      console.log('Handling remote container WebSocket upgrade request');
+      console.log('🔌 Handling remote container WebSocket upgrade request');
       return this.processRemoteContainerConnection(request);
     }
 
     // Only delegate to parent for MCP-related endpoints
     if (path.endsWith('/ws') || path.endsWith('/sse') || path.endsWith('/message')) {
-      console.log(`Delegating MCP endpoint ${method} ${path} to parent McpServerDO`);
-      return super.fetch(request);
+      console.log(`🔄 Delegating MCP endpoint ${method} ${path} to parent McpServerDO`);
+      console.log('🔍 Current proxy connection state:', this.mcpProxy.isConnected());
+      const response = await super.fetch(request);
+      console.log(`✅ Parent McpServerDO response: ${response.status} ${response.statusText}`);
+      return response;
     }
 
     // For any other paths, return 404
-    console.log(`No handler found for ${method} ${path}, returning 404`);
+    console.log(`❌ No handler found for ${method} ${path}, returning 404`);
     return new Response(JSON.stringify({
       success: false,
       error: 'Endpoint not found',
       path: path,
       method: method,
-      availableEndpoints: [CLIENT_WS_ENDPOINT, REMOTE_CONTAINER_WS_ENDPOINT]
+      availableEndpoints: [CLIENT_WS_ENDPOINT, REMOTE_CONTAINER_WS_ENDPOINT, '/sse', '/ws', '/message']
     }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }

@@ -119,11 +119,6 @@ export abstract class McpServerDO extends DurableObject {
     this.sessions.set(sessionId, transport);
     this.server.connect(transport);
 
-    // Start the transport to send initial session data
-    transport.start().catch((error: unknown) => {
-      console.error("Error starting WebSocket transport:", error);
-    });
-
     // Return the client end of the WebSocket with the MCP subprotocol
     const headers = new Headers();
     headers.set('Sec-WebSocket-Protocol', MCP_SUBPROTOCOL);

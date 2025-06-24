@@ -228,6 +228,7 @@ async function initializeExistingServers() {
     console.log(`🔄 Initializing ${packages.length} existing MCP servers...`)
     
     for (const pkg of packages) {
+      console.log(`🔄 Connecting to ${pkg.uniqueName}: ${pkg.command} ${pkg.args.join(' ')}`)
       const result = await connectToMcpServer(
         pkg.uniqueName,
         pkg.command,
@@ -237,10 +238,25 @@ async function initializeExistingServers() {
       
       if (!result.success) {
         console.warn(`⚠️ Failed to connect to existing server ${pkg.uniqueName}: ${result.error}`)
+      } else {
+        console.log(`✅ Successfully connected to ${pkg.uniqueName}`)
+        
+        // Test the connection by listing tools
+        try {
+          const client = mcpClients.get(pkg.uniqueName)
+          if (client) {
+            console.log(`🔍 Testing tools list for ${pkg.uniqueName}...`)
+            const toolsResponse = await client.listTools()
+            console.log(`🔍 ${pkg.uniqueName} has ${toolsResponse.tools.length} tools:`, toolsResponse.tools.map(t => t.name))
+          }
+        } catch (error) {
+          console.warn(`⚠️ Error testing tools for ${pkg.uniqueName}:`, error)
+        }
       }
     }
     
     console.log(`✅ Initialized ${mcpClients.size}/${packages.length} MCP servers`)
+    console.log(`🔍 Active MCP clients:`, Array.from(mcpClients.keys()))
   } catch (error) {
     console.error('❌ Error initializing existing servers:', error)
   }
@@ -598,6 +614,29 @@ async function connectToMcpProxy() {
       mcpServer.connect(transport);
       console.log('🔍 MCP server connected to transport')
       
+      // Add logging to the transport to see message flow
+      const originalSend = transport.send;
+      transport.send = function(message: any) {
+        const isRequest = 'method' in message;
+        const isResponse = 'result' in message || 'error' in message;
+        
+        console.log('📤 Transport sending message:', {
+          messageType: isRequest ? 'request' : isResponse ? 'response' : 'unknown',
+          method: 'method' in message ? message.method : undefined,
+          id: 'id' in message ? message.id : undefined,
+          hasResult: 'result' in message && !!message.result,
+          hasError: 'error' in message && !!message.error,
+          resultType: 'result' in message ? typeof message.result : undefined,
+          resultToolsCount: 'result' in message && message.result && message.result.tools ? message.result.tools.length : undefined
+        })
+        
+        // Log the actual message being sent (truncated for readability)
+        const messageStr = JSON.stringify(message);
+        console.log('📤 Actual message being sent:', messageStr.substring(0, 300) + (messageStr.length > 300 ? '...' : ''));
+        
+        return originalSend.call(this, message);
+      }
+      
       // Add error handling to the server
       mcpServer.onerror = (error: any) => {
         console.error('❌ MCP Server error:', error)
@@ -627,11 +666,28 @@ async function connectToMcpProxy() {
       }
 
       console.log('📨 Received message from MCP proxy:', messageData)
+      console.log('🔍 Message analysis:', {
+        hasJsonrpc: !!messageData.jsonrpc,
+        hasMethod: !!messageData.method,
+        hasResult: !!messageData.result,
+        hasError: !!messageData.error,
+        hasId: !!messageData.id,
+        hasVerb: !!messageData.verb,
+        messageType: messageData.jsonrpc ? 'MCP' : messageData.verb ? 'ADMIN' : 'UNKNOWN',
+        keys: Object.keys(messageData)
+      })
 
       // Simplified message routing - only two types
       if (isMcpMessage(messageData)) {
         if (transport) {
-          console.log('🔄 Processing MCP protocol message:', messageData.method || 'response')
+          console.log('🔄 Processing MCP protocol message:', messageData.method || (messageData.result ? 'response' : 'unknown'))
+          console.log('🔍 MCP message details:', {
+            id: messageData.id,
+            method: messageData.method,
+            hasResult: !!messageData.result,
+            hasError: !!messageData.error,
+            resultType: messageData.result ? typeof messageData.result : undefined
+          })
           console.log('🔍 Transport exists, calling handleMessage...')
           transport.handleMessage(data.toString())
           console.log('🔍 handleMessage completed')
@@ -728,8 +784,11 @@ function setupMcpServerHandlers(mcpServer: Server) {
     }
 
     console.log(`📋 Total tools available: ${allTools.length}`)
+    console.log('🔍 All tools:', allTools.map(t => ({ name: t.name, description: t.description?.substring(0, 100) + '...' })))
     console.log('🔍 Returning tools response...')
-    return { tools: allTools };
+    const result = { tools: allTools };
+    console.log('🔍 Final tools response:', JSON.stringify(result, null, 2))
+    return result;
   });
 
   // List resources from all connected upstream servers with namespacing
