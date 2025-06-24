@@ -23,11 +23,16 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
           
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'yarn'
+          cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Configure npm
@@ -36,13 +41,13 @@ jobs:
           npm config set access public
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Build packages
-        run: yarn build
+        run: pnpm build
 
       - name: Test packages
-        run: yarn test
+        run: pnpm test
       
       - name: Setup Git User
         run: |
@@ -53,13 +58,15 @@ jobs:
         id: publish
         run: |
           # Apply changesets (update version numbers)
-          yarn changeset version
+          pnpm changeset version
           
           # Extract versions for release notes
           MCP_VERSION=$(node -p "require('./packages/mcp/package.json').version")
           TEST_UTILS_VERSION=$(node -p "require('./packages/test-utils/package.json').version")
+          PLAYGROUND_VERSION=$(node -p "require('./packages/playground/package.json').version")
           echo "MCP_VERSION=${MCP_VERSION}" >> $GITHUB_OUTPUT
           echo "TEST_UTILS_VERSION=${TEST_UTILS_VERSION}" >> $GITHUB_OUTPUT
+          echo "PLAYGROUND_VERSION=${PLAYGROUND_VERSION}" >> $GITHUB_OUTPUT
           echo "RELEASE_TAG=v${MCP_VERSION}" >> $GITHUB_OUTPUT
           
           # Commit the version updates
@@ -67,7 +74,7 @@ jobs:
           git commit -m "chore(release): version packages" || echo "No changes to commit"
           
           # Build once more to ensure latest versions are included
-          yarn build
+          pnpm build
           
           # Manually publish each package with npm
           echo "Publishing packages directly with npm..."
@@ -75,6 +82,8 @@ jobs:
           npm publish --access public || echo "Failed to publish test-utils, may already exist"
           cd ../mcp
           npm publish --access public || echo "Failed to publish mcp, may already exist"
+          cd ../playground
+          npm publish --access public || echo "Failed to publish playground, may already exist"
           cd ../..
           
           # Push the version updates and tags
@@ -92,7 +101,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { RELEASE_TAG, MCP_VERSION, TEST_UTILS_VERSION } = process.env;
+            const { RELEASE_TAG, MCP_VERSION, TEST_UTILS_VERSION, PLAYGROUND_VERSION } = process.env;
             
             // Get the commits since the last tag
             const { data: commits } = await github.rest.repos.listCommits({
@@ -107,6 +116,7 @@ jobs:
             
             - @xava-labs/mcp: ${MCP_VERSION}
             - @xava-labs/test-utils: ${TEST_UTILS_VERSION}
+            - @xava-labs/playground: ${PLAYGROUND_VERSION}
             
             ## Recent Changes
             
@@ -128,4 +138,5 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.publish.outputs.RELEASE_TAG }}
           MCP_VERSION: ${{ steps.publish.outputs.MCP_VERSION }}
-          TEST_UTILS_VERSION: ${{ steps.publish.outputs.TEST_UTILS_VERSION }} 
+          TEST_UTILS_VERSION: ${{ steps.publish.outputs.TEST_UTILS_VERSION }}
+          PLAYGROUND_VERSION: ${{ steps.publish.outputs.PLAYGROUND_VERSION }} 
