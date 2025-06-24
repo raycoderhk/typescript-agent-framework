@@ -15,7 +15,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"prepublishOnly": "tsc",
+		"prepare": "npm run build",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",

@@ -27,7 +27,8 @@
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5",
-    "@vitest/ui": "^2.0.5"
-  },
-  "packageManager": "yarn@1.22.22"
+    "@vitest/ui": "^2.0.5",
+    "@xava-labs/mcp": "file:../mcp"
+
+  }
 }
