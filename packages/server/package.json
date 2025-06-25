@@ -9,9 +9,11 @@
     "start": "node dist/index.js",
     "send": "tsx send-message.ts",
     "test": "vitest run tests/websocket.test.ts",
-    "docker:build": "docker build -t xava-labs-server .",
-    "docker:run": "docker run --env-file .env -p ${PORT:-3000}:${PORT:-3000} -v $(pwd)/data:/app/data xava-labs-server",
-    "docker:dev": "docker-compose up --build"
+    "docker:build": "cd ../../ && docker build -f packages/server/Dockerfile -t xava-labs-server .",
+    "docker:run": "docker run --rm -p ${PORT:-3000}:3000 -e PORT=${PORT:-3000} -e DB_PATH=/app/data/packages.db -e MCP_PROXY_URL=ws://host.docker.internal:6050/api/remote-container/ws --add-host host.docker.internal:host-gateway -v $(pwd)/data:/workspace/packages/server/data xava-labs-server",
+    "docker:dev": "docker-compose up --build",
+    "docker:shell": "docker run --rm -it --entrypoint /bin/bash xava-labs-server",
+    "proxy:test": "tsx src/test-figma-mcp.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.12.0",
@@ -29,6 +31,5 @@
     "vitest": "^2.0.5",
     "@vitest/ui": "^2.0.5",
     "@xava-labs/mcp": "file:../mcp"
-
   }
 }

@@ -1,15 +1,21 @@
+# packages/server/docker-compose.yml
 version: '3.8'
 
 services:
   server:
-    build: .
+    build:
+      context: ../../
+      dockerfile: packages/server/Dockerfile
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     environment:
       - PORT=${PORT:-3000}
       - DB_PATH=/app/data/packages.db
+      - MCP_PROXY_URL=ws://host.docker.internal:6050/api/remote-container/ws
     volumes:
-      - ./data:/app/data
+      - ./data:/workspace/packages/server/data
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

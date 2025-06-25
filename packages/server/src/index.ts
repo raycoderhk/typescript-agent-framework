@@ -141,7 +141,7 @@ async function testMcpServerConnection(
   command: string, 
   args: string[], 
   env: Record<string, string>, 
-  timeoutMs = 10000
+  timeoutMs = 100000
 ) {
   let client: Client | null = null
   let transport: StdioClientTransport | null = null

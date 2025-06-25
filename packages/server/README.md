@@ -16,27 +16,31 @@ A WebSocket server for managing MCP (Model Context Protocol) packages with SQLit
 ### Local Development
 
 ```bash
-# Install dependencies
-yarn install
-
-# Start development server
-yarn dev
-
-# Server will be available at:
-# HTTP: http://localhost:3000
-# WebSocket: ws://localhost:3000/ws
+cd ../playground
+pnpm i
+pnpm dev
+cd ../server
+pnpm dev
 ```
 
-### Docker
+### Docker Commands
 
 ```bash
-# Build and run with docker-compose
-yarn docker:dev
-
-# Or manually
+# Build the Docker image (run from packages/server directory)
 yarn docker:build
+
+# Run the container with all necessary environment variables and volume mounts
 yarn docker:run
+
+# Build and run using docker-compose (recommended for development)
+yarn docker:dev
 ```
+
+**Command Details:**
+- **`docker:build`**: Builds the Docker image from the monorepo root with the correct build context
+- **`docker:run`**: Runs the container with host network access, environment variables, and data volume mounting
+- **`docker:dev`**: Uses docker-compose to build and run the container with all configurations from `docker-compose.yml`
+
 
 ## WebSocket API
 
