@@ -13,9 +13,10 @@ A WebSocket server for managing MCP (Model Context Protocol) packages with SQLit
 
 ## Quick Start
 
-### Development
+### Usage
 
 ```bash
+# first, set .env file in packages/server (you can reference .env.example)
 cd ../playground
 pnpm i
 # stop here and go to Docker Commands if you want to just do a Docker build, or continue on here for local dev
