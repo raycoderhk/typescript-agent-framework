@@ -22,7 +22,7 @@
     "wrangler": "^4.9.1"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.9.0",
+    "@modelcontextprotocol/sdk": "^1.13.0",
     "@xava-labs/mcp": "file:../../packages/mcp",
     "zod": "^3.23.8"
   }

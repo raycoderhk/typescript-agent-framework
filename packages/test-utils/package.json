@@ -29,7 +29,7 @@
     "postversion": "echo 'Version updated to' $npm_package_version"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.9.0"
+    "@modelcontextprotocol/sdk": "^1.13.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.43",
