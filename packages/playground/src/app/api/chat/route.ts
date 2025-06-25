@@ -34,6 +34,17 @@ let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
 
 // Function to get or create MCP client using AI SDK's built-in support
 async function getMCPClient() {
+  // If client exists but is closed, reset it
+  if (mcpClient) {
+    try {
+      // Try to use the client to check if it's still alive
+      await mcpClient.tools();
+    } catch {
+      console.log('MCP client is closed, creating new one...');
+      mcpClient = null;
+    }
+  }
+  
   if (!mcpClient) {
     // Use the built-in SSE transport from AI SDK
     mcpClient = await createMCPClient({
@@ -51,7 +62,6 @@ async function getMCPClient() {
 
 export async function POST(request: NextRequest) {
   let body: ChatRequest | null = null;
-  let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
   
   try {
     body = await request.json();
@@ -80,10 +90,10 @@ export async function POST(request: NextRequest) {
     const providerInstance = await createProvider(provider, apiKey);
 
     // Get MCP client and tools
-    mcpClient = await getMCPClient();
+    const client = await getMCPClient();
     
     // Get tools from MCP client - the AI SDK handles all the transformation
-    const mcpTools = await mcpClient.tools();
+    const mcpTools = await client.tools();
 
     // Determine if we should force tool usage for Cloudflare questions
     const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || '';
@@ -122,23 +132,15 @@ EXAMPLE: If user asks "what is vectorize?" you must call search_cloudflare_docum
       toolChoice: shouldForceCloudflareSearch && cloudflareToolName ? { type: 'tool' as const, toolName: cloudflareToolName } : undefined,
       // Include MCP tools if available and model supports tools
       tools: (Object.keys(mcpTools).length > 0 && !model.includes('o1')) ? mcpTools : undefined,
-      onFinish: async () => {
-        // Close the MCP client when the response is finished
-        try {
-          await mcpClient?.close();
-        } catch (error) {
-          console.error('Error closing MCP client:', error);
-        }
-      }
+      // Don't close the client - keep it alive for reuse
     });
 
     return result.toDataStreamResponse();
   } catch (error) {
-    // Close MCP client on error
-    try {
-      await mcpClient?.close();
-    } catch (closeError) {
-      console.error('Error closing MCP client:', closeError);
+    // If there's a critical error with the MCP client, reset it
+    if (error instanceof Error && error.message.includes('closed client')) {
+      console.error('MCP client error detected, resetting client...');
+      mcpClient = null;
     }
     
     // Check for specific AI SDK errors
@@ -150,7 +152,7 @@ EXAMPLE: If user asks "what is vectorize?" you must call search_cloudflare_docum
         { 
           error: 'AI SDK Error', 
           details: error.message,
-          errorType: error.name
+          errorType: error.name || 'MCPClientError'
         },
         { status: 500 }
       );
