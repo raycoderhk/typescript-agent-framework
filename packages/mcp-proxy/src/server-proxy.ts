@@ -31,7 +31,6 @@ export class McpServerProxyDO extends McpServerDO {
   private clientConnections: Set<WebSocket> = new Set();
   
   constructor(ctx: DurableObjectState, env: any) {
-    console.log('🏗️ McpServerProxyDO constructor called - Durable Object created/recreated');
     const proxy = new McpServerProxy();
     super(ctx, env, proxy);
     this.mcpProxy = proxy;
@@ -60,12 +59,9 @@ export class McpServerProxyDO extends McpServerDO {
    * Process a client WebSocket connection
    */
   protected processClientConnection(request: Request): Response {
-    console.log("Accepting client WebSocket connection");
-
     // Verify the Upgrade header is present and is WebSocket
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== 'websocket') {
-      console.log("Rejecting connection - Upgrade header is not websocket");
       return new Response('Expected Upgrade: websocket', {
         status: 426,
       });
@@ -78,14 +74,11 @@ export class McpServerProxyDO extends McpServerDO {
     // Store marker that this is a client connection
     server.serializeAttachment({ isClient: true } as ClientAttachment);
 
-    console.log("Accepting client WebSocket connection");
     // Accept WebSocket with hibernation support
     this.ctx.acceptWebSocket(server);
 
     // Add to client connections set
     this.clientConnections.add(server);
-
-    console.log('Client connection accepted');
 
     // Auto-initialize the client with status and server list
     this.initializeNewClient(server);
@@ -100,8 +93,6 @@ export class McpServerProxyDO extends McpServerDO {
    * Initialize a newly connected client by sending status and requesting server list
    */
   private initializeNewClient(clientWs: WebSocket): void {
-    console.log('🚀 Initializing new client connection');
-    
     // Send immediate status to the client
     const statusMessage = {
       verb: 'status',
@@ -113,9 +104,8 @@ export class McpServerProxyDO extends McpServerDO {
     
     try {
       clientWs.send(JSON.stringify(statusMessage));
-      console.log('✅ Sent status message to new client');
     } catch (error) {
-      console.error('❌ Failed to send status message to client:', error);
+      console.error('Failed to send status message to client:', error);
     }
 
     // If remote container is connected, automatically request server list
@@ -126,9 +116,8 @@ export class McpServerProxyDO extends McpServerDO {
       
       try {
         this.mcpProxy.forwardToProxy(JSON.stringify(listRequest));
-        console.log('✅ Automatically requested server list for new client');
       } catch (error) {
-        console.error('❌ Failed to request server list for client:', error);
+        console.error('Failed to request server list for client:', error);
       }
     } else {
       // Send empty server list if remote container not connected
@@ -142,9 +131,8 @@ export class McpServerProxyDO extends McpServerDO {
       
       try {
         clientWs.send(JSON.stringify(emptyListResponse));
-        console.log('✅ Sent empty server list to new client (remote container not connected)');
       } catch (error) {
-        console.error('❌ Failed to send empty server list to client:', error);
+        console.error('Failed to send empty server list to client:', error);
       }
     }
   }
@@ -154,11 +142,8 @@ export class McpServerProxyDO extends McpServerDO {
    * When a Durable Object wakes up from hibernation, it needs to reconnect to existing WebSockets
    */
   private restoreProxyConnectionFromHibernation(): void {
-    console.log('🔄 Checking for hibernated WebSocket connections to restore...');
-    
     // Get all existing WebSocket connections
     const allWebSockets = this.ctx.getWebSockets();
-    console.log(`📡 Found ${allWebSockets.length} existing WebSocket connections`);
     
     for (const ws of allWebSockets) {
       try {
@@ -166,26 +151,20 @@ export class McpServerProxyDO extends McpServerDO {
         
         // Look for remote container connection
         if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
-          console.log('🔗 Restoring remote container proxy connection from hibernation');
           this.mcpProxy.setProxyConnection(ws);
-          console.log('✅ Successfully restored proxy connection state');
           break; // Only need one remote container connection
         }
         // Track client connections
         else if (attachment && 'isClient' in attachment && attachment.isClient) {
-          console.log('👤 Restoring client connection from hibernation');
           this.clientConnections.add(ws);
         }
       } catch (error) {
-        console.error('❌ Error restoring WebSocket connection:', error);
+        console.error('Error restoring WebSocket connection:', error);
       }
     }
     
-    console.log(`📊 Restoration complete - Proxy connected: ${this.mcpProxy.isConnected()}, Clients: ${this.clientConnections.size}`);
-    
     // If we restored a proxy connection, broadcast the connected status to any existing clients
     if (this.mcpProxy.isConnected() && this.clientConnections.size > 0) {
-      console.log('🔄 Broadcasting restored connection status to existing clients');
       this.broadcastConnectionStatus(true, 'Remote container connection restored from hibernation');
     }
   }
@@ -195,7 +174,6 @@ export class McpServerProxyDO extends McpServerDO {
    * Call this method when you need detailed connection state information
    */
   public debugConnectionState(): void {
-    console.log('🐛 McpServerProxyDO - Debug connection state:');
     this.mcpProxy.debugConnectionState();
   }
 
@@ -203,12 +181,9 @@ export class McpServerProxyDO extends McpServerDO {
    * Process a remote container WebSocket connection
    */
   protected processRemoteContainerConnection(request: Request): Response {
-    console.log("Accepting remote container WebSocket connection");
-
     // Verify the Upgrade header is present and is WebSocket
     const upgradeHeader = request.headers.get('Upgrade');
     if (!upgradeHeader || upgradeHeader.toLowerCase() !== 'websocket') {
-      console.log("Rejecting connection - Upgrade header is not websocket");
       return new Response('Expected Upgrade: websocket', {
         status: 426,
       });
@@ -221,14 +196,11 @@ export class McpServerProxyDO extends McpServerDO {
     // Store marker that this is a remote container connection
     server.serializeAttachment({ isRemoteContainer: true } as RemoteContainerAttachment);
 
-    console.log("Accepting remote container WebSocket connection");
     // Accept WebSocket with hibernation support
     this.ctx.acceptWebSocket(server);
 
     // Set this as the proxy connection
     this.mcpProxy.setProxyConnection(server);
-
-    console.log('Remote container connection accepted');
     
     // Broadcast connection status to all clients
     this.broadcastConnectionStatus(true, 'Remote container connected');
@@ -243,8 +215,6 @@ export class McpServerProxyDO extends McpServerDO {
    * Broadcast message to all connected clients
    */
   private broadcastToClients(message: string): void {
-    console.log('📤 Broadcasting message to', this.clientConnections.size, 'clients');
-    
     for (const client of this.clientConnections) {
       try {
         client.send(message);
@@ -268,7 +238,6 @@ export class McpServerProxyDO extends McpServerDO {
       timestamp: new Date().toISOString()
     };
     
-    console.log(`📡 Broadcasting connection status: ${connected ? 'CONNECTED' : 'DISCONNECTED'} - ${message}`);
     this.broadcastToClients(JSON.stringify(statusMessage));
   }
 
@@ -278,20 +247,11 @@ export class McpServerProxyDO extends McpServerDO {
   override async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer): Promise<void> {
     const attachment = ws.deserializeAttachment() as RemoteContainerAttachment | ClientAttachment | { sessionId: string } | null;
     
-    console.log('🔄 McpServerProxyDO webSocketMessage received:', {
-      dataType: typeof data,
-      dataLength: typeof data === 'string' ? data.length : data.byteLength,
-      attachment: attachment
-    });
-    
     // Handle messages from remote container
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
-      console.log('🔍 Received message from remote container - processing and broadcasting');
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
-      console.log('📨 Remote container message preview:', messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''));
       
       // First, forward to the MCP proxy for transport handling
-      console.log('🔄 Forwarding message to MCP proxy transport...');
       this.mcpProxy.handleProxyMessage(data);
       
       // Check if this is a system message (shutdown notification, etc.)
@@ -300,21 +260,19 @@ export class McpServerProxyDO extends McpServerDO {
         if (messageData.type) {
           switch (messageData.type) {
             case 'client_ready':
-              console.log(`📡 Remote container client ready: ${messageData.clientId}`);
+              // Remote container client ready
               break;
             case 'client_shutdown':
-              console.log(`👋 Remote container shutting down: ${messageData.clientId} - ${messageData.message}`);
               // Notify clients about container shutdown
               this.broadcastConnectionStatus(false, 'Remote container shutting down gracefully');
               // Don't broadcast the raw shutdown message to clients
               return;
             default:
-              console.log(`🔍 Unknown system message type: ${messageData.type}`);
+              // Unknown system message type
           }
         }
       } catch (error) {
         // Not JSON or not a system message, continue with normal broadcast
-        console.log('📨 Message is not JSON or system message, broadcasting as-is');
       }
       
       // Also broadcast to clients for admin interface
@@ -322,16 +280,10 @@ export class McpServerProxyDO extends McpServerDO {
     }
     // Handle messages from clients
     else if (attachment && 'isClient' in attachment && attachment.isClient) {
-      console.log('🔍 Received message from client - forwarding to remote container');
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
-      console.log('📨 Client message preview:', messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''));
       
       // Check connection state before forwarding
       if (!this.mcpProxy.isConnected()) {
-        console.warn('⚠️ Message forwarding failed - remote container not connected');
-        console.log('🐛 Connection debug info:');
-        this.mcpProxy.debugConnectionState();
-        
         // Send error response back to client
         const errorResponse = {
           verb: 'error',
@@ -343,7 +295,7 @@ export class McpServerProxyDO extends McpServerDO {
         try {
           ws.send(JSON.stringify(errorResponse));
         } catch (error) {
-          console.error('❌ Failed to send error response to client:', error);
+          console.error('Failed to send error response to client:', error);
         }
         return;
       }
@@ -352,10 +304,6 @@ export class McpServerProxyDO extends McpServerDO {
     }
     else {
       // Process the message via transport for consistency (MCP client connections)
-      console.log('🔄 Processing message via parent transport (MCP client connection)');
-      console.log('📨 MCP message attachment:', attachment);
-      const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
-      console.log('📨 MCP message preview:', messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''));
       super.webSocketMessage(ws, data);
     }
   }
@@ -368,7 +316,6 @@ export class McpServerProxyDO extends McpServerDO {
     
     // Handle remote container disconnection
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
-      console.log('🔌 Remote container WebSocket closed:', { code, reason, wasClean });
       this.mcpProxy.setProxyConnection(null);
       
       // Determine disconnect reason and broadcast status
@@ -376,14 +323,11 @@ export class McpServerProxyDO extends McpServerDO {
         ? (code === 1000 ? 'Remote container disconnected gracefully' : `Remote container closed (code: ${code})`)
         : 'Remote container disconnected unexpectedly';
       
-      console.log('Remote container disconnected:', reason);
       this.broadcastConnectionStatus(false, disconnectReason);
     }
     // Handle client disconnection
     else if (attachment && 'isClient' in attachment && attachment.isClient) {
-      console.log('🔌 Client WebSocket closed:', { code, reason, wasClean });
       this.clientConnections.delete(ws);
-      console.log('Client disconnected. Remaining clients:', this.clientConnections.size);
     }
     
     // Delegate to parent for regular client handling
@@ -396,17 +340,16 @@ export class McpServerProxyDO extends McpServerDO {
   override async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     const attachment = ws.deserializeAttachment() as RemoteContainerAttachment | ClientAttachment | { sessionId: string } | null;
     
+    console.error('WebSocket error:', error);
+    
     // Handle remote container error
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
-      console.log('❌ Remote container WebSocket error:', error);
       this.mcpProxy.setProxyConnection(null);
       this.broadcastConnectionStatus(false, 'Remote container error occurred');
     }
     // Handle client error
     else if (attachment && 'isClient' in attachment && attachment.isClient) {
-      console.log('❌ Client WebSocket error:', error);
       this.clientConnections.delete(ws);
-      console.log('Client connection removed due to error. Remaining clients:', this.clientConnections.size);
     }
     
     // Delegate to parent for regular client handling
@@ -421,32 +364,22 @@ export class McpServerProxyDO extends McpServerDO {
     const path = url.pathname;
     const method = request.method;
 
-    console.log(`🌐 McpServerProxyDO: ${method} ${path} (full URL: ${url.toString()})`);
-    console.log('🔍 Request headers:', Object.fromEntries(request.headers.entries()));
-
     // Process client WebSocket upgrade requests
     if (path === CLIENT_WS_ENDPOINT || path.endsWith(CLIENT_WS_ENDPOINT)) {
-      console.log('🔌 Handling client WebSocket upgrade request');
       return this.processClientConnection(request);
     }
 
     // Process remote container WebSocket upgrade requests
     if (path === REMOTE_CONTAINER_WS_ENDPOINT || path.endsWith(REMOTE_CONTAINER_WS_ENDPOINT)) {
-      console.log('🔌 Handling remote container WebSocket upgrade request');
       return this.processRemoteContainerConnection(request);
     }
 
     // Only delegate to parent for MCP-related endpoints
     if (path.endsWith('/ws') || path.endsWith('/sse') || path.endsWith('/message')) {
-      console.log(`🔄 Delegating MCP endpoint ${method} ${path} to parent McpServerDO`);
-      console.log('🔍 Current proxy connection state:', this.mcpProxy.isConnected());
-      const response = await super.fetch(request);
-      console.log(`✅ Parent McpServerDO response: ${response.status} ${response.statusText}`);
-      return response;
+      return super.fetch(request);
     }
 
     // For any other paths, return 404
-    console.log(`❌ No handler found for ${method} ${path}, returning 404`);
     return new Response(JSON.stringify({
       success: false,
       error: 'Endpoint not found',

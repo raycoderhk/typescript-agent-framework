@@ -150,10 +150,9 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
   // Send a message over WebSocket
   const sendMessage = useCallback((message: McpServerRequest) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('📤 Sending WebSocket message:', message);
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.error('❌ Cannot send message: WebSocket not connected');
+      console.error('Cannot send message: WebSocket not connected');
     }
   }, []);
 
@@ -192,7 +191,6 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
     try {
       const message: McpServerMessage = JSON.parse(event.data);
-      console.log('📨 Received WebSocket message:', message);
 
       // Handle error messages first
       if (!message.success && 'error' in message && message.error) {
@@ -207,7 +205,6 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
       if ('verb' in message) {
         switch (message.verb) {
           case 'status':
-            console.log('📊 Received status update:', message);
             updateState({
               connected: message.connected,
               error: message.connected ? null : (message.message || 'Not connected')
@@ -258,7 +255,6 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
               };
             });
             if (message.success) {
-              console.log('✅ Server added successfully:', message.data?.name);
               // Don't manually request list - proxy will auto-send updated list
             }
             break;
@@ -275,7 +271,6 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
                 : (('error' in message ? message.error : undefined) || 'Failed to delete server')
             }));
             if (message.success) {
-              console.log('✅ Server deleted successfully');
               // Don't manually request list - proxy will auto-send updated list
             }
             break;
@@ -296,12 +291,10 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
 
     try {
       // Create WebSocket connection using the configured URL
-      console.log('🔌 Connecting to WebSocket:', config.mcpProxyWsUrl);
       const ws = new WebSocket(config.mcpProxyWsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('✅ WebSocket connected');
         updateState({ 
           loading: false, 
           error: null
@@ -309,13 +302,11 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
         reconnectAttempts.current = 0;
         
         // Proxy will automatically send status and list - no manual requests needed
-        console.log('🤖 Waiting for automatic status and server list from proxy...');
       };
 
       ws.onmessage = handleWebSocketMessage;
 
-      ws.onclose = (event) => {
-        console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+      ws.onclose = () => {
         updateState({ 
           connected: false,
           loading: false,
@@ -325,7 +316,6 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
         // Attempt to reconnect
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
-          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1})`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectAttempts.current++;
@@ -337,7 +327,7 @@ export function useConfigurableMcpServerManager(): UseMcpServerManagerReturn {
       };
 
       ws.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
+        console.error('WebSocket error:', error);
         updateState({ 
           loading: false,
           error: 'WebSocket connection error'
