@@ -10,6 +10,8 @@ interface ChatRequest {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  maxSteps?: number;
+  systemPrompt?: string;
   mcpProxyId?: string; // Optional MCP proxy session ID
 }
 
@@ -95,43 +97,15 @@ export async function POST(request: NextRequest) {
     // Get tools from MCP client - the AI SDK handles all the transformation
     const mcpTools = await client.tools();
 
-    // Determine if we should force tool usage for Cloudflare questions
-    const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || '';
-    const shouldForceCloudflareSearch = lastMessage.includes('cloudflare') || 
-                                       lastMessage.includes('vectorize') ||
-                                       lastMessage.includes('workers') ||
-                                       lastMessage.includes('pages') ||
-                                       lastMessage.includes('r2') ||
-                                       lastMessage.includes('kv') ||
-                                       lastMessage.includes('d1') ||
-                                       lastMessage.includes('durable');
-    
-    const cloudflareToolName = Object.keys(mcpTools).find(name => name.includes('search_cloudflare_documentation'));
-    
     const result = streamText({
       model: providerInstance(model),
-      system: `You are a helpful assistant with access to specialized tools. 
-
-CRITICAL INSTRUCTIONS:
-1. You MUST use the search_cloudflare_documentation tool for ANY question about Cloudflare products
-2. The user just asked about "vectorize" - this is Cloudflare Vectorize, so you MUST use the tool
-3. NEVER answer Cloudflare questions without using the tool first
-4. If you see keywords like: Workers, Pages, R2, KV, D1, Durable Objects, Vectorize, AI - USE THE TOOL
-
-Available tools:
-- cloudflare-docs-vectorize__search_cloudflare_documentation: REQUIRED for Cloudflare questions
-- figma-context-mcp__get_figma_data: For Figma file analysis  
-- figma-context-mcp__download_figma_images: For downloading Figma assets
-
-EXAMPLE: If user asks "what is vectorize?" you must call search_cloudflare_documentation with query "vectorize".`,
+      system: otherParams.systemPrompt,
       messages,
       temperature: otherParams.temperature,
       maxTokens: otherParams.maxTokens,
-      maxSteps: 15,
-      // Force tool usage for Cloudflare questions
-      toolChoice: shouldForceCloudflareSearch && cloudflareToolName ? { type: 'tool' as const, toolName: cloudflareToolName } : undefined,
+      maxSteps: otherParams.maxSteps || 10,
       // Include MCP tools if available and model supports tools
-      tools: (Object.keys(mcpTools).length > 0 && !model.includes('o1')) ? mcpTools : undefined,
+      tools: mcpTools,
       // Don't close the client - keep it alive for reuse
     });
 

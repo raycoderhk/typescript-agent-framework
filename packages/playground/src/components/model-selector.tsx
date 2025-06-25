@@ -7,7 +7,8 @@ import {
   saveAIModelConfig,
   loadProviderConfig,
   saveCurrentProvider,
-  getCurrentProvider
+  getCurrentProvider,
+  AIModelConfig
 } from "@/lib/storage";
 
 // Simplified types for API-driven approach
@@ -17,19 +18,13 @@ interface APIModel {
   description?: string;
 }
 
-interface ModelConfig {
-  provider: 'openai' | 'anthropic';
-  apiKey: string;
-  model: string;
-}
-
 export interface ModelSelectorProps {
   className?: string;
-  onModelChange?: (config: ModelConfig | null) => void;
+  onModelChange?: (config: AIModelConfig | null) => void;
 }
 
 export function ModelSelector({ className, onModelChange }: ModelSelectorProps) {
-  const [config, setConfig] = useState<ModelConfig>(() => {
+  const [config, setConfig] = useState<AIModelConfig>(() => {
     const saved = loadAIModelConfig();
     if (saved) {
       return saved;
@@ -129,10 +124,14 @@ export function ModelSelector({ className, onModelChange }: ModelSelectorProps) 
   const handleProviderChange = (provider: 'openai' | 'anthropic') => {
     // Load the saved config for this provider, or use empty values if none exists
     const savedProviderConfig = loadProviderConfig(provider);
-    const newConfig = { 
+    const newConfig: AIModelConfig = { 
       provider, 
       apiKey: savedProviderConfig?.apiKey || '', 
-      model: savedProviderConfig?.model || '' 
+      model: savedProviderConfig?.model || '',
+      temperature: savedProviderConfig?.temperature,
+      maxTokens: savedProviderConfig?.maxTokens,
+      maxSteps: savedProviderConfig?.maxSteps,
+      systemPrompt: savedProviderConfig?.systemPrompt
     };
     
     setConfig(newConfig);
@@ -144,12 +143,12 @@ export function ModelSelector({ className, onModelChange }: ModelSelectorProps) 
   };
 
   const handleApiKeyChange = (apiKey: string) => {
-    setConfig(prev => ({ ...prev, apiKey, model: '' }));
+    setConfig((prev: AIModelConfig) => ({ ...prev, apiKey, model: '' }));
     setAvailableModels([]);
   };
 
   const handleModelChange = (modelId: string) => {
-    setConfig(prev => ({ ...prev, model: modelId }));
+    setConfig((prev: AIModelConfig) => ({ ...prev, model: modelId }));
   };
 
   const isConfigured = config.apiKey.trim().length > 0 && availableModels.length > 0;
@@ -255,23 +254,109 @@ export function ModelSelector({ className, onModelChange }: ModelSelectorProps) 
 
           {/* Model Selection - only show if we have models */}
           {availableModels.length > 0 && (
-            <div>
-              <label className="text-xs text-white/60 mb-2 block">Model</label>
-              <select
-                value={config.model}
-                onChange={(e) => handleModelChange(e.target.value)}
-                className="w-full bg-[#09090B] border border-[rgba(255,255,255,0.2)] rounded-md px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
-              >
-                {availableModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-white/40 mt-1">
-                {availableModels.length} model{availableModels.length !== 1 ? 's' : ''} available
-              </p>
-            </div>
+            <>
+              <div>
+                <label className="text-xs text-white/60 mb-2 block">Model</label>
+                <select
+                  value={config.model}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  className="w-full bg-[#09090B] border border-[rgba(255,255,255,0.2)] rounded-md px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-white/40 mt-1">
+                  {availableModels.length} model{availableModels.length !== 1 ? 's' : ''} available
+                </p>
+              </div>
+
+              {/* Advanced Settings */}
+              <div className="space-y-4 pt-4 border-t border-[rgba(255,255,255,0.1)]">
+                <h4 className="text-xs font-medium text-white/70">Advanced Settings</h4>
+                
+                {/* System Prompt */}
+                <div>
+                  <label className="text-xs text-white/60 mb-2 block">
+                    System Prompt
+                    <span className="text-white/40 ml-1 text-xs">(optional)</span>
+                  </label>
+                  <textarea
+                    value={config.systemPrompt || ''}
+                    onChange={(e) => setConfig((prev: AIModelConfig) => ({ ...prev, systemPrompt: e.target.value }))}
+                    placeholder="Enter a system prompt to guide the AI's behavior..."
+                    className="w-full bg-[#09090B] border border-[rgba(255,255,255,0.2)] rounded-md px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-[rgba(255,255,255,0.4)] min-h-[80px] resize-y"
+                  />
+                  <p className="text-xs text-white/40 mt-1">
+                    The system prompt sets the behavior and context for the AI assistant.
+                  </p>
+                </div>
+
+                {/* Temperature */}
+                <div>
+                  <label className="text-xs text-white/60 mb-2 block">
+                    Temperature: <span className="text-white/80">{config.temperature ?? 0.7}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={config.temperature ?? 0.7}
+                    onChange={(e) => setConfig((prev: AIModelConfig) => ({ ...prev, temperature: parseFloat(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-white/40 mt-1">
+                    <span>Precise</span>
+                    <span>Creative</span>
+                  </div>
+                </div>
+
+                {/* Max Tokens */}
+                <div>
+                  <label className="text-xs text-white/60 mb-2 block">
+                    Max Tokens
+                    <span className="text-white/40 ml-1 text-xs">(optional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="128000"
+                    value={config.maxTokens || ''}
+                    onChange={(e) => setConfig((prev: AIModelConfig) => ({ 
+                      ...prev, 
+                      maxTokens: e.target.value ? parseInt(e.target.value, 10) : undefined 
+                    }))}
+                    placeholder="e.g., 4096"
+                    className="w-full bg-[#09090B] border border-[rgba(255,255,255,0.2)] rounded-md px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
+                  />
+                  <p className="text-xs text-white/40 mt-1">
+                    Maximum number of tokens to generate. Leave empty for model default.
+                  </p>
+                </div>
+
+                {/* Max Steps */}
+                <div>
+                  <label className="text-xs text-white/60 mb-2 block">
+                    Max Steps: <span className="text-white/80">{config.maxSteps ?? 10}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="1"
+                    max="25"
+                    step="1"
+                    value={config.maxSteps ?? 10}
+                    onChange={(e) => setConfig((prev: AIModelConfig) => ({ ...prev, maxSteps: parseInt(e.target.value, 10) }))}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-white/40 mt-1">
+                    Maximum number of reasoning steps for tool use. Default is 10.
+                  </p>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Status */}

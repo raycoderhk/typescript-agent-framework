@@ -5,18 +5,11 @@ import { ChatContainer } from "@/components/chat";
 import { MCPServerDirectory } from "@/components/mcp-server-directory";
 import { ModelSelector } from "@/components/model-selector";
 import { MCPServer } from "@/types/mcp-server";
-import { getCurrentModelConfig } from "@/lib/storage";
-
-// Simplified model config for API-driven approach
-interface ModelConfig {
-  provider: 'openai' | 'anthropic';
-  apiKey: string;
-  model: string;
-}
+import { getCurrentModelConfig, AIModelConfig } from "@/lib/storage";
 
 export default function Home() {
   const [enabledServerCount, setEnabledServerCount] = useState<number>(0);
-  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
+  const [modelConfig, setModelConfig] = useState<AIModelConfig | null>(null);
 
   // Load initial model config
   useEffect(() => {
@@ -47,7 +40,7 @@ export default function Home() {
     setEnabledServerCount(count);
   };
 
-  const handleModelChange = useCallback((config: ModelConfig | null) => {
+  const handleModelChange = useCallback((config: AIModelConfig | null) => {
     console.log('Model config updated:', config);
     setModelConfig(config);
   }, []);

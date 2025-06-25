@@ -5,15 +5,8 @@ import { ChatContainer } from "../../components/chat";
 import { MCPServerDirectory } from "../../components/mcp-server-directory";
 import { ModelSelector } from "../../components/model-selector";
 import { MCPServer } from "../../types/mcp-server";
-import { getCurrentModelConfig } from "../../lib/storage";
+import { getCurrentModelConfig, AIModelConfig } from "../../lib/storage";
 import { usePlaygroundConfig } from './playground-provider';
-
-// Simplified model config for API-driven approach
-interface ModelConfig {
-  provider: 'openai' | 'anthropic';
-  apiKey: string;
-  model: string;
-}
 
 export interface PlaygroundProps {
   className?: string;
@@ -34,7 +27,7 @@ export function Playground({
 }: PlaygroundProps) {
   const config = usePlaygroundConfig();
   const [enabledServerCount, setEnabledServerCount] = useState<number>(0);
-  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
+  const [modelConfig, setModelConfig] = useState<AIModelConfig | null>(null);
 
   // Load initial model config with fallback to config
   useEffect(() => {
@@ -66,7 +59,7 @@ export function Playground({
     setEnabledServerCount(count);
   };
 
-  const handleModelChange = useCallback((config: ModelConfig | null) => {
+  const handleModelChange = useCallback((config: AIModelConfig | null) => {
     console.log('Model config updated:', config);
     setModelConfig(config);
   }, []);

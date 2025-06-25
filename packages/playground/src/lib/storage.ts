@@ -58,15 +58,23 @@ export function loadMCPDirectory(): MCPServerDirectory | null {
 const AI_MODEL_CONFIG_PREFIX = 'ai_model_config_';
 const CURRENT_PROVIDER_KEY = 'current_ai_provider';
 
-interface AIModelConfig {
+export interface AIModelConfig {
   provider: 'openai' | 'anthropic';
   apiKey: string;
   model: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxSteps?: number;
+  systemPrompt?: string;
 }
 
 interface ProviderConfig {
   apiKey: string;
   model: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxSteps?: number;
+  systemPrompt?: string;
 }
 
 export function saveAIModelConfig(config: AIModelConfig) {
@@ -75,7 +83,11 @@ export function saveAIModelConfig(config: AIModelConfig) {
     // Save the provider-specific config
     const providerConfig: ProviderConfig = {
       apiKey: config.apiKey,
-      model: config.model
+      model: config.model,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      maxSteps: config.maxSteps,
+      systemPrompt: config.systemPrompt
     };
     localStorage.setItem(
       `${AI_MODEL_CONFIG_PREFIX}${config.provider}`, 
@@ -104,7 +116,11 @@ export function loadAIModelConfig(): AIModelConfig | null {
     return {
       provider: currentProvider,
       apiKey: providerConfig.apiKey,
-      model: providerConfig.model
+      model: providerConfig.model,
+      temperature: providerConfig.temperature,
+      maxTokens: providerConfig.maxTokens,
+      maxSteps: providerConfig.maxSteps,
+      systemPrompt: providerConfig.systemPrompt
     };
   } catch (error) {
     console.error('Failed to load AI model config:', error);

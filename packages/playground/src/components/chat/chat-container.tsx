@@ -26,6 +26,10 @@ interface ModelConfig {
   provider: 'openai' | 'anthropic';
   apiKey: string;
   model: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxSteps?: number;
+  systemPrompt?: string;
 }
 
 export interface ChatContainerProps {
@@ -103,7 +107,11 @@ export function ChatContainer({
     body: modelConfig ? {
       provider: modelConfig.provider,
       model: modelConfig.model,
-    } : {} as Record<string, string>,
+      temperature: modelConfig.temperature,
+      maxTokens: modelConfig.maxTokens,
+      maxSteps: modelConfig.maxSteps,
+      systemPrompt: modelConfig.systemPrompt,
+    } : {} as Record<string, any>,
     onError: (error) => {
       console.error('Chat error:', error);
       if (error.message.includes('API key')) {
