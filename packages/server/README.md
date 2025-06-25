@@ -13,11 +13,12 @@ A WebSocket server for managing MCP (Model Context Protocol) packages with SQLit
 
 ## Quick Start
 
-### Local Development
+### Development
 
 ```bash
 cd ../playground
 pnpm i
+# stop here and go to Docker Commands if you want to just do a Docker build, or continue on here for local dev
 pnpm dev
 cd ../server
 pnpm dev
@@ -26,10 +27,10 @@ pnpm dev
 ### Docker Commands
 
 ```bash
-# Build the Docker image (run from packages/server directory)
+# Build the Docker image (run from packages/server directory - make sure you have done `pnpm i` in ../playground dir listed above)
 yarn docker:build
 
-# Run the container with all necessary environment variables and volume mounts
+# Run the container with all necessary environment variables and volume mounts (refer to package.json if you want to edit this command)
 yarn docker:run
 
 # Build and run using docker-compose (recommended for development)
