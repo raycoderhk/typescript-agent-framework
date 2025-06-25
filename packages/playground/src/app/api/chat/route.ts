@@ -15,6 +15,160 @@ interface ChatRequest {
   mcpProxyId?: string; // Optional MCP proxy session ID
 }
 
+// Error types and user-friendly messages
+interface ErrorResponse {
+  error: string;
+  userMessage: string;
+  errorType: string;
+  details?: string;
+  suggestions?: string[];
+}
+
+function createErrorResponse(error: unknown): ErrorResponse {
+  console.error('Chat API error:', error);
+  
+  // Type guard for error objects
+  const isErrorWithMessage = (err: unknown): err is { message: string; cause?: { message: string; statusCode?: number }; statusCode?: number } => {
+    return typeof err === 'object' && err !== null && ('message' in err || ('cause' in err && typeof (err as Record<string, unknown>).cause === 'object' && (err as Record<string, unknown>).cause !== null && 'message' in ((err as Record<string, unknown>).cause as Record<string, unknown>)));
+  };
+  
+  // Handle AI API errors (Anthropic, OpenAI, etc.)
+  if (isErrorWithMessage(error)) {
+    const errorMessage = error.cause?.message || error.message;
+    const statusCode = error.statusCode || error.cause?.statusCode;
+    
+    // Anthropic-specific errors
+    if (errorMessage.includes('prompt is too long')) {
+      const match = errorMessage.match(/(\d+) tokens > (\d+) maximum/);
+      const currentTokens = match?.[1];
+      const maxTokens = match?.[2];
+      
+      return {
+        error: 'Token limit exceeded',
+        userMessage: `Your conversation is too long for this model. You're using ${currentTokens} tokens, but the maximum is ${maxTokens}.`,
+        errorType: 'TOKEN_LIMIT_EXCEEDED',
+        details: errorMessage,
+        suggestions: [
+          'Try starting a new conversation',
+          'Use a model with a larger context window',
+          'Summarize your conversation and start fresh'
+        ]
+      };
+    }
+    
+    if (errorMessage.includes('rate_limit_error') || statusCode === 429) {
+      return {
+        error: 'Rate limit exceeded',
+        userMessage: 'You\'re sending requests too quickly. Please wait a moment before trying again.',
+        errorType: 'RATE_LIMIT_EXCEEDED',
+        details: errorMessage,
+        suggestions: [
+          'Wait 30-60 seconds before retrying',
+          'Consider upgrading your API plan for higher limits'
+        ]
+      };
+    }
+    
+    if (errorMessage.includes('insufficient_quota') || errorMessage.includes('billing')) {
+      return {
+        error: 'API quota exceeded',
+        userMessage: 'Your API quota has been exceeded. Please check your billing settings.',
+        errorType: 'QUOTA_EXCEEDED',
+        details: errorMessage,
+        suggestions: [
+          'Check your API billing dashboard',
+          'Add credits to your account',
+          'Upgrade your API plan'
+        ]
+      };
+    }
+    
+    if (errorMessage.includes('invalid_api_key') || statusCode === 401) {
+      return {
+        error: 'Invalid API key',
+        userMessage: 'Your API key is invalid or has expired. Please check your API key settings.',
+        errorType: 'INVALID_API_KEY',
+        details: errorMessage,
+        suggestions: [
+          'Verify your API key is correct',
+          'Check if your API key has expired',
+          'Generate a new API key from your provider dashboard'
+        ]
+      };
+    }
+    
+    if (errorMessage.includes('model_not_found') || errorMessage.includes('model not found')) {
+      return {
+        error: 'Model not found',
+        userMessage: 'The selected AI model is not available or doesn\'t exist.',
+        errorType: 'MODEL_NOT_FOUND',
+        details: errorMessage,
+        suggestions: [
+          'Try a different model',
+          'Check if the model name is spelled correctly',
+          'Verify your API access includes this model'
+        ]
+      };
+    }
+    
+    if (errorMessage.includes('server_error') || (statusCode && statusCode >= 500)) {
+      return {
+        error: 'Server error',
+        userMessage: 'The AI service is experiencing issues. Please try again in a few moments.',
+        errorType: 'SERVER_ERROR',
+        details: errorMessage,
+        suggestions: [
+          'Wait a few minutes and try again',
+          'Check the AI provider\'s status page',
+          'Try a different model if available'
+        ]
+      };
+    }
+  }
+  
+  // MCP-specific errors
+  if (isErrorWithMessage(error) && (error.message?.includes('MCP') || error.message?.includes('closed client'))) {
+    return {
+      error: 'Tool connection error',
+      userMessage: 'There was an issue connecting to the tools. Your message was processed, but tools may not be available.',
+      errorType: 'MCP_CONNECTION_ERROR',
+      details: error.message,
+      suggestions: [
+        'Try your request again',
+        'Tools may be temporarily unavailable'
+      ]
+    };
+  }
+  
+  // Network errors
+  if (isErrorWithMessage(error) && (error.message?.includes('fetch') || error.message?.includes('network'))) {
+    return {
+      error: 'Network error',
+      userMessage: 'Unable to connect to the AI service. Please check your internet connection.',
+      errorType: 'NETWORK_ERROR',
+      details: error.message,
+      suggestions: [
+        'Check your internet connection',
+        'Try again in a few moments',
+        'Contact support if the issue persists'
+      ]
+    };
+  }
+  
+  // Generic fallback
+  return {
+    error: 'Unexpected error',
+    userMessage: 'An unexpected error occurred. Please try again.',
+    errorType: 'UNKNOWN_ERROR',
+    details: isErrorWithMessage(error) ? error.message : 'Unknown error',
+    suggestions: [
+      'Try your request again',
+      'Refresh the page if the issue persists',
+      'Contact support if the problem continues'
+    ]
+  };
+}
+
 // Dynamic provider factory with dynamic imports
 async function createProvider(provider: 'openai' | 'anthropic', apiKey: string) {
   switch (provider) {
@@ -91,11 +245,15 @@ export async function POST(request: NextRequest) {
     // Create the provider
     const providerInstance = await createProvider(provider, apiKey);
 
-    // Get MCP client and tools
-    const client = await getMCPClient();
-    
-    // Get tools from MCP client - the AI SDK handles all the transformation
-    const mcpTools = await client.tools();
+    // Get MCP client and tools (with graceful degradation)
+    let mcpTools = {};
+    try {
+      const client = await getMCPClient();
+      mcpTools = await client.tools();
+    } catch (mcpError) {
+      console.warn('MCP tools unavailable, continuing without tools:', mcpError);
+      // Continue without tools rather than failing completely
+    }
 
     const result = streamText({
       model: providerInstance(model),
@@ -117,24 +275,15 @@ export async function POST(request: NextRequest) {
       mcpClient = null;
     }
     
-    // Check for specific AI SDK errors
-    if (error instanceof Error) {
-      console.error('Chat API error:', error.message);
-      
-      // Return more specific error response
-      return Response.json(
-        { 
-          error: 'AI SDK Error', 
-          details: error.message,
-          errorType: error.name || 'MCPClientError'
-        },
-        { status: 500 }
-      );
-    }
+    // Create structured error response
+    const errorResponse = createErrorResponse(error);
     
-    return Response.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    // Return structured error that the UI can handle
+    return Response.json(errorResponse, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 } 

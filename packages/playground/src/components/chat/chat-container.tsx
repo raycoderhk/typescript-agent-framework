@@ -11,9 +11,16 @@ export interface Message {
   id: string;
   content: string;
   timestamp: string | Date;
-  sender: "user" | "agent";
+  sender: "user" | "agent" | "error";
   isThinking?: boolean;
   isStreaming?: boolean;
+  error?: {
+    error: string;
+    userMessage: string;
+    errorType: string;
+    details?: string;
+    suggestions?: string[];
+  };
 }
 
 interface DateDividerItem {
@@ -35,7 +42,6 @@ interface ModelConfig {
 export interface ChatContainerProps {
   className?: string;
   title?: string;
-  onEdit?: () => void;
   showHeader?: boolean;
   initialThinking?: boolean;
   modelConfig?: ModelConfig | null;
@@ -64,7 +70,6 @@ function isDifferentDay(date1: Date, date2: Date): boolean {
 export function ChatContainer({ 
   className, 
   title,
-  onEdit,
   showHeader = true,
   modelConfig: propModelConfig,
 }: ChatContainerProps) {
@@ -79,6 +84,7 @@ export function ChatContainer({
   );
   
   const [isThinking, setIsThinking] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<Message | null>(null);
   
   // Use prop model config or fallback to localStorage
   const modelConfig = propModelConfig || getCurrentModelConfig();
@@ -111,9 +117,33 @@ export function ChatContainer({
       maxTokens: modelConfig.maxTokens,
       maxSteps: modelConfig.maxSteps,
       systemPrompt: modelConfig.systemPrompt,
-    } : {} as Record<string, any>,
+    } : {} as Record<string, unknown>,
     onError: (error) => {
       console.error('Chat error:', error);
+      setIsThinking(false);
+      
+      // Try to parse structured error response
+      try {
+        const errorData = JSON.parse(error.message);
+        if (errorData.userMessage && errorData.errorType) {
+          // Add structured error message to chat
+          const errorMessage: Message = {
+            id: `error-${Date.now()}`,
+            content: errorData.userMessage,
+            timestamp: new Date(),
+            sender: "error",
+            error: errorData
+          };
+          
+          // Add error message to the chat (we'll need to manage this state)
+          setErrorMessage(errorMessage);
+          return;
+        }
+      } catch {
+        // Not a structured error, handle as before
+      }
+      
+      // Fallback to generic error handling
       if (error.message.includes('API key')) {
         setModelError('Invalid API key. Please check your configuration.');
       } else if (error.message.includes('model')) {
@@ -204,33 +234,40 @@ export function ChatContainer({
     });
   }, [aiMessages, status]);
   
-  // Add thinking indicator if needed
+  // Add thinking indicator and error messages if needed
   const messagesWithThinking = React.useMemo(() => {
+    const messages: Message[] = [...displayMessages];
+    
+    // Add error message if present
+    if (errorMessage) {
+      messages.push({
+        ...errorMessage,
+        timestamp: new Date(errorMessage.timestamp)
+      });
+    }
+    
     // Only add thinking indicator if:
     // 1. We're in thinking state
     // 2. The last message is from the user (not the agent)
     // 3. We have at least one message
-    const lastMessage = displayMessages[displayMessages.length - 1];
+    const lastMessage = messages[messages.length - 1];
     const shouldShowThinking = isThinking && 
-                              displayMessages.length > 0 && 
+                              messages.length > 0 && 
                               (!lastMessage || lastMessage.sender === 'user');
     
     if (shouldShowThinking) {
       console.log("Adding thinking indicator");
-      return [
-        ...displayMessages,
-        {
-          id: "thinking",
-          content: "", // Empty content to show just the dots
-          timestamp: new Date(),
-          sender: "agent" as "user" | "agent",
-          isThinking: true // This triggers the 3-dot animation in ChatMessage
-        }
-      ];
+      messages.push({
+        id: "thinking",
+        content: "", // Empty content to show just the dots
+        timestamp: new Date(),
+        sender: "agent",
+        isThinking: true // This triggers the 3-dot animation in ChatMessage
+      });
     }
     
-    return displayMessages;
-  }, [displayMessages, isThinking]);
+    return messages;
+  }, [displayMessages, isThinking, errorMessage]);
   
   // Group messages by date
   const messagesWithDates = React.useMemo(() => {
@@ -259,6 +296,9 @@ export function ChatContainer({
   const handleFormSubmit = React.useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || !modelConfig) return;
+    
+    // Clear any previous error messages
+    setErrorMessage(null);
     
     // Set thinking state immediately for better UX
     setIsThinking(true);
@@ -291,7 +331,7 @@ export function ChatContainer({
         boxShadow: "0 0 30px rgba(0, 0, 0, 0.3)"
       }}
     >
-      {showHeader && <ChatHeader title={displayTitle} onEdit={onEdit} />}
+      {showHeader && <ChatHeader title={displayTitle} />}
       
       <div className="flex-1 overflow-y-auto px-6 py-6">
         {/* Show model configuration error if present */}
@@ -333,6 +373,7 @@ export function ChatContainer({
                 variant={message.sender}
                 isThinking={message.isThinking}
                 isStreaming={message.isStreaming}
+                error={message.error}
               />
             </div>
           );
