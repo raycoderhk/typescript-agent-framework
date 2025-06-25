@@ -33,8 +33,6 @@ proxyServer.on('connection', (ws) => {
             command: 'npx',
             args: ['-y', 'figma-developer-mcp', '--figma-api-key=YOUR_KEY', '--stdio'],
             env: { FIGMA_API_KEY: 'YOUR_KEY' }
-            args: ['-y', 'figma-developer-mcp', '--figma-api-key=YOUR_KEY', '--stdio'],
-            env: { FIGMA_API_KEY: 'YOUR_KEY' }
           }
         }
         console.log('📤 Sending add command...')
