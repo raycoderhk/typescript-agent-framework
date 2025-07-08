@@ -10,12 +10,19 @@ export interface MCPServerInput {
   id: string;
   description: string;
   password?: boolean;
+  required?: boolean;
+  default?: string;
 }
 
 export interface MCPServerConfig {
   command: string;
   args: string[];
   env?: Record<string, string>;
+}
+
+// New nested MCP server config structure
+export interface MCPServerConfigNested {
+  mcpServers: Record<string, MCPServerConfig>;
 }
 
 export interface MCPServerRepository {
@@ -35,23 +42,35 @@ export interface MCPServerConfigData {
 }
 
 export interface MCPServer {
-  id: string; // Unique identifier
-  name: string; // Unique name
-  shortDescription: string; // < 255 characters
-  repository: MCPServerRepository;
-  mcpServerConfig: MCPServerConfig;
-  inputs?: MCPServerInput[]; // Configuration inputs following VSCode format
-  versions: MCPServerVersion[];
-  keywords: string[];
-  licenses: string[];
-  category?: string;
-  author?: string;
-  homepage?: string;
-  documentation?: string;
+  id: string; // UUID
+  git_repository: string; // GitHub repository URL
+  unique_name: string; // Formatted as owner/repo
+  short_description: string; // Longer description text
+  versions: MCPServerVersion[]; // Array of versions
+  keywords: string[]; // Array of keyword strings
+  license: string; // License name (e.g., "MIT License")
+  license_url: string; // URL to license file
+  mcp_server_config: MCPServerConfigNested; // Nested configuration
+  created_at: string; // ISO timestamp
+  updated_at: string; // ISO timestamp
+  mcp_server_inputs: string; // Stringified JSON array of MCPServerInput[]
+  tags: string; // Stringified JSON array of category tags
+  
+  // Computed/derived fields for backward compatibility and display
+  name?: string; // Derived from unique_name
+  shortDescription?: string; // Alias for short_description
+  mcpServerConfig?: MCPServerConfig; // Flattened config for compatibility
+  inputs?: MCPServerInput[]; // Parsed from mcp_server_inputs
+  parsedTags?: string[]; // Parsed from tags
+  licenses?: string[]; // Converted from license for compatibility
+  category?: string; // Derived from first tag
+  author?: string; // Derived from unique_name
+  homepage?: string; // Derived from git_repository
+  documentation?: string; // Derived from git_repository
   // Search optimization fields
   searchText?: string; // Combined searchable text
   popularity?: number; // For ranking
-  lastUpdated?: string;
+  lastUpdated?: string; // Alias for updated_at
 }
 
 export interface MCPServerDirectory {

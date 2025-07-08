@@ -4,7 +4,12 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { MCPServer } from "@/types/mcp-server";
 import { loadMCPConfig } from "@/lib/storage";
-import { Settings } from "lucide-react";
+import { ChevronDown, MoreVertical, Star, Package } from "lucide-react";
+import { Switch } from "./ui/switch";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { ServerActionsDropdown, InstallDropdown } from "./server-dropdown-menu";
 
 export interface MCPServerItemProps {
   server: MCPServer;
@@ -40,192 +45,171 @@ export function MCPServerItem({
     onConfigure?.(server);
   };
 
-  const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onToggle?.(server, !isEnabled);
+  const handleToggle = (checked: boolean) => {
+    onToggle?.(server, checked);
   };
 
-  const formatDate = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch {
-      return '';
-    }
+  // Map tags to badge variants - using parsedTags from the new format
+  const getTagVariant = (tag: string): "raspberry" | "brown" | "violet" | "productivity" | "devtools" | "data" => {
+    const tagMap: Record<string, "raspberry" | "brown" | "violet" | "productivity" | "devtools" | "data"> = {
+      "design": "violet",
+      "dev tools": "devtools", 
+      "ai": "raspberry",
+      "documentation": "brown",
+      "search": "data",
+      "cloud": "data",
+      "utilities": "productivity",
+      "productivity": "productivity",
+      "time management": "brown",
+      "collaboration": "raspberry",
+      "version control": "devtools",
+      "data": "data",
+    };
+    return tagMap[tag.toLowerCase()] || "brown";
   };
 
-  const renderActionControls = () => {
-    // For servers that don't require configuration
-    if (!requiresConfiguration) {
-      return (
-        <button
-          onClick={handleToggle}
-          disabled={isLoading}
-          className={cn(
-            "relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
-            isLoading && "animate-pulse ring-2 ring-yellow-400/60 shadow-lg shadow-yellow-400/30",
-            isEnabled && !isLoading && "bg-[#72FFC0]",
-            isLoading && "bg-yellow-400",
-            !isEnabled && !isLoading && "bg-[rgba(255,255,255,0.1)]",
-            isLoading && "cursor-not-allowed"
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-3 w-3 transform rounded-full transition-all duration-300",
-              isLoading && "bg-white animate-spin border border-yellow-600",
-              !isLoading && "bg-white",
-              isEnabled && !isLoading ? "translate-x-5" : "translate-x-1"
-            )}
-          >
-            {isLoading && (
-              <div className="absolute inset-0 rounded-full border-t-2 border-yellow-600 animate-spin" />
-            )}
-          </span>
-        </button>
-      );
-    }
-
-    // For servers that require configuration
-    if (!isConfigured) {
-      // Show install button
-      return (
-        <button
-          onClick={handleInstallClick}
-          disabled={isLoading}
-          className={cn(
-            "px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200",
-            "bg-[#72FFC0] text-black hover:bg-[#72FFC0]/90",
-            "focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
-            isLoading && "opacity-50 cursor-not-allowed animate-pulse"
-          )}
-        >
-          {isLoading ? "Installing..." : "Install"}
-        </button>
-      );
-    }
-
-    // Show toggle + settings for configured servers
-    return (
-      <div className="flex items-center gap-2">
-        {/* Settings icon */}
-        <button
-          onClick={handleConfigureClick}
-          className="p-1 text-white/60 hover:text-white/80 transition-colors"
-          title="Configure settings"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
-
-        {/* Toggle switch */}
-        <button
-          onClick={handleToggle}
-          disabled={isLoading}
-          className={cn(
-            "relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[rgba(114,255,192,0.5)] focus:ring-offset-2 focus:ring-offset-[#09090B]",
-            isLoading && "animate-pulse ring-2 ring-yellow-400/60 shadow-lg shadow-yellow-400/30",
-            isEnabled && !isLoading && "bg-[#72FFC0]",
-            isLoading && "bg-yellow-400",
-            !isEnabled && !isLoading && "bg-[rgba(255,255,255,0.1)]",
-            isLoading && "cursor-not-allowed"
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-3 w-3 transform rounded-full transition-all duration-300",
-              isLoading && "bg-white animate-spin border border-yellow-600",
-              !isLoading && "bg-white",
-              isEnabled && !isLoading ? "translate-x-5" : "translate-x-1"
-            )}
-          >
-            {isLoading && (
-              <div className="absolute inset-0 rounded-full border-t-2 border-yellow-600 animate-spin" />
-            )}
-          </span>
-        </button>
-      </div>
-    );
-  };
+  // Use parsedTags if available, fallback to keywords for backward compatibility
+  const displayTags = server.parsedTags && server.parsedTags.length > 0 ? server.parsedTags : server.keywords;
+  const visibleTags = displayTags.slice(0, 3); // Show only 3 tags to ensure single line
+  const remainingTags = displayTags.slice(3);
+  const remainingTagsCount = remainingTags.length;
 
   return (
-    <div
-      className={cn(
-        "p-4 rounded-lg border transition-all duration-200 hover:border-[rgba(255,255,255,0.2)] relative bg-[#17181A] border-[rgba(255,255,255,0.1)]",
-        isEnabled && !isLoading && "ring-2 ring-[rgba(114,255,192,0.3)] border-[rgba(114,255,192,0.3)]",
-        isLoading && "ring-2 ring-yellow-400/40 border-yellow-400/40 shadow-lg shadow-yellow-400/20",
-        className
-      )}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-base text-white/95 truncate">
-            {server.name}
-          </h3>
-          {server.author && (
-            <p className="text-sm text-white/60 truncate mt-1">
-              by {server.author}
-            </p>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-2 ml-2">
-          {server.popularity && (
-            <div className="flex items-center gap-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-yellow-500">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-              </svg>
-              <span className="text-xs text-white/60">{server.popularity}</span>
+    <TooltipProvider>
+      <div
+        className={cn(
+          "flex flex-col gap-3 p-5 rounded-xl transition-all duration-200",
+          "bg-gradient-to-br from-white/[0.08] to-black/[0.08] border border-white/20",
+          "hover:border-purple-500",
+          isEnabled && "border-[#5CC489]",
+          className
+        )}
+      >
+        {/* Main content */}
+        <div className="flex flex-col gap-3 flex-1">
+          {/* Header with title, rating and actions */}
+          <div className="flex gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col gap-1">
+                <h3 className="font-bold text-base text-white leading-tight">
+                  {server.name}
+                </h3>
+                <div className="flex items-center gap-2 text-sm">
+                  {server.author && (
+                    <>
+                      <span className="text-white/60">by {server.author}</span>
+                      <div className="w-0 h-4 border-l border-white/12" />
+                    </>
+                  )}
+                  {server.popularity && (
+                    <div className="flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5 text-[#FFDB70] fill-current" strokeWidth={1.4} />
+                      <span className="text-xs text-white/80">{server.popularity}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-          
-          {/* Action Controls */}
-          {renderActionControls()}
-        </div>
-      </div>
 
-      {/* Description */}
-      <p className="text-sm text-white/75 mb-4 line-clamp-2 leading-relaxed">
-        {server.shortDescription}
-      </p>
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              {isEnabled ? (
+                // Enabled state: Switch + 3-dots menu
+                <div className="flex items-center gap-2">
+                  <Switch 
+                    checked={isEnabled}
+                    onCheckedChange={handleToggle}
+                    disabled={isLoading}
+                  />
+                  <ServerActionsDropdown
+                    server={server}
+                    onConfigure={onConfigure}
+                    onUninstall={(server) => onToggle?.(server, false)}
+                  />
+                </div>
+              ) : (
+                // Install state: Direct Install button + dropdown for install options + 3-dots menu
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center">
+                    <Button
+                      onClick={handleInstallClick}
+                      disabled={isLoading}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-r-none border-r-0 border-white/20 bg-transparent text-white hover:bg-white/10"
+                    >
+                      {isLoading ? "Installing..." : "Install"}
+                    </Button>
+                    <InstallDropdown
+                      onInstall={() => onInstall?.(server)}
+                      isLoading={isLoading}
+                      triggerClassName="h-8 w-8 p-0 rounded-l-none border-white/20 bg-transparent text-white hover:bg-white/10"
+                    />
+                  </div>
+                  <ServerActionsDropdown
+                    server={server}
+                    onConfigure={onConfigure}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
 
-      {/* Keywords */}
-      {server.keywords.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {server.keywords.slice(0, 4).map((keyword, index) => (
-            <span
-              key={index}
-              className="px-2 py-1 bg-[rgba(255,255,255,0.05)] text-xs text-white/60 rounded-md"
-            >
-              {keyword}
-            </span>
-          ))}
-          {server.keywords.length > 4 && (
-            <span className="text-xs text-white/40">
-              +{server.keywords.length - 4}
-            </span>
-          )}
+          {/* Description */}
+          <p className="text-xs text-white/80 leading-[1.4] font-light">
+            {server.shortDescription}
+          </p>
         </div>
-      )}
 
-      {/* Footer */}
-      <div className="flex items-center justify-between text-xs text-white/40">
-        <div className="flex items-center gap-2">
-          {server.category && (
-            <span className="bg-[rgba(255,255,255,0.05)] px-2 py-0.5 rounded">
-              {server.category}
-            </span>
-          )}
-          {server.licenses.length > 0 && (
-            <span>{server.licenses[0]}</span>
-          )}
-        </div>
-        {server.lastUpdated && (
-          <span>{formatDate(server.lastUpdated)}</span>
+        {/* Enabled state footer */}
+        {isEnabled && (
+          <div className="flex items-center justify-between p-4 -mx-5 mb-3 border-t border-white/10 bg-white/[0.02]">
+            <div className="flex items-center gap-1.5">
+              <Package className="h-4 w-4 text-white/80" />
+              <span className="text-xs text-white font-normal">
+                3 of 6 Tools Enabled
+              </span>
+            </div>
+            <ChevronDown className="h-4 w-4 text-white/60 rotate-[-90deg]" />
+          </div>
+        )}
+
+        {/* Tags - Moved to bottom to eliminate empty space */}
+        {displayTags.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-hidden mt-auto">
+            {visibleTags.map((tag, index) => (
+              <Badge
+                key={index}
+                variant={getTagVariant(tag)}
+                className="h-6 px-3 py-1 text-xs font-medium rounded-md flex-shrink-0"
+              >
+                {tag}
+              </Badge>
+            ))}
+            {remainingTagsCount > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="brown"
+                    className="h-6 px-2 py-1 text-xs font-medium rounded-md flex-shrink-0 cursor-help"
+                  >
+                    +{remainingTagsCount}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs">
+                  <div className="flex flex-wrap gap-1">
+                    {remainingTags.map((tag, index) => (
+                      <span key={index} className="text-xs">
+                        {tag}{index < remainingTags.length - 1 ? ", " : ""}
+                      </span>
+                    ))}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
         )}
       </div>
-    </div>
+    </TooltipProvider>
   );
 } 

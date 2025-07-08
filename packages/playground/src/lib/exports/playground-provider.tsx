@@ -20,8 +20,8 @@ export interface PlaygroundConfig {
 }
 
 const DEFAULT_CONFIG: PlaygroundConfig = {
-  mcpProxyUrl: 'http://localhost:6050',
-  mcpProxyWsUrl: 'ws://localhost:6050/client/ws',
+  mcpProxyUrl: process.env.NEXT_PUBLIC_MCP_PROXY_URL || 'http://localhost:6050',
+  mcpProxyWsUrl: process.env.NEXT_PUBLIC_MCP_PROXY_WS_URL || 'ws://localhost:6050/client/ws',
   apiBaseUrl: '/api',
   theme: 'dark',
   enabledFeatures: {

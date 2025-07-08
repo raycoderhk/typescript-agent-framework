@@ -33,6 +33,68 @@ export function deleteChat(sessionId: string) {
   }
 }
 
+// Proxy ID storage
+const PROXY_ID_KEY = 'playground_proxy_id';
+
+export function generateProxyId(): string {
+  return crypto.randomUUID();
+}
+
+export function getOrCreateProxyId(): string {
+  try {
+    if (typeof window === 'undefined') {
+      // Server-side rendering - return a temporary ID
+      return 'temp-' + Math.random().toString(36).substring(2, 15);
+    }
+    
+    const stored = localStorage.getItem(PROXY_ID_KEY);
+    if (stored) {
+      return stored;
+    }
+    
+    // Generate new proxy ID and save it
+    const newProxyId = generateProxyId();
+    localStorage.setItem(PROXY_ID_KEY, newProxyId);
+    console.log('Generated new proxyId:', newProxyId);
+    return newProxyId;
+  } catch (error) {
+    console.error('Failed to get or create proxy ID:', error);
+    return generateProxyId(); // Fallback to non-persistent ID
+  }
+}
+
+export function getProxyId(): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(PROXY_ID_KEY);
+  } catch (error) {
+    console.error('Failed to get proxy ID:', error);
+    return null;
+  }
+}
+
+export function saveProxyId(proxyId: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(PROXY_ID_KEY, proxyId);
+  } catch (error) {
+    console.error('Failed to save proxy ID:', error);
+  }
+}
+
+// Helper function to construct proxy URLs with proxyId
+export function buildProxyUrl(baseUrl: string, proxyId?: string): string {
+  try {
+    const url = new URL(baseUrl);
+    const finalProxyId = proxyId || getOrCreateProxyId();
+    url.searchParams.set('proxyId', finalProxyId);
+    return url.toString();
+  } catch (error) {
+    console.error('Failed to build proxy URL:', error);
+    return baseUrl; // Fallback to original URL
+  }
+}
+
 // MCP Directory storage
 const MCP_DIRECTORY_KEY = 'mcp_directory';
 

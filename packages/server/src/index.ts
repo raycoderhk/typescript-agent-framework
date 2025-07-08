@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
+import { cors } from 'hono/cors'
 import WebSocket from 'ws'
 import { mkdirSync } from 'fs'
 import { dirname } from 'path'
@@ -18,8 +19,46 @@ import { createPackageRepository, PackageRepository } from './persistence/index.
 
 // Environment configuration
 const PORT = parseInt(process.env.PORT || '3001')
+const HEALTH_CHECK_PORT = parseInt(process.env.HEALTH_CHECK_PORT || '11990')
 const DB_PATH = process.env.DB_PATH || './data/packages.db'
-const MCP_PROXY_URL = process.env.MCP_PROXY_URL || 'ws://localhost:6050/api/remote-container/ws'
+
+// Parse command line arguments for proxyId and MCP proxy URL
+const args = process.argv.slice(2)
+
+// Extract proxyId from command line or environment
+const proxyIdArgIndex = args.findIndex(arg => arg === '--proxy-id' || arg === '-p')
+const PROXY_ID = proxyIdArgIndex !== -1 && args[proxyIdArgIndex + 1] 
+  ? args[proxyIdArgIndex + 1] 
+  : process.env.PROXY_ID
+
+// Extract mcp-server-host from command line or environment
+const mcpServerHostArgIndex = args.findIndex(arg => arg === '--mcp-server-host')
+const MCP_SERVER_HOST = mcpServerHostArgIndex !== -1 && args[mcpServerHostArgIndex + 1]
+  ? args[mcpServerHostArgIndex + 1]
+  : process.env.MCP_SERVER_HOST || 'localhost:6050'
+
+if (!PROXY_ID) {
+  console.error('❌ ERROR: proxyId is required!')
+  console.error('Please provide a proxyId using one of these methods:')
+  console.error('  1. Command line: --proxy-id YOUR_UUID_HERE')
+  console.error('  2. Environment variable: PROXY_ID=YOUR_UUID_HERE')
+  console.error('')
+  console.error('Example: node dist/index.js --proxy-id 12345678-1234-1234-1234-123456789abc')
+  console.error('')
+  console.error('Optional arguments:')
+  console.error('  --mcp-server-host HOST:PORT   Set MCP server host (default: localhost:6050)')
+  process.exit(1)
+}
+
+// Construct MCP_PROXY_URL with proxyId and configurable host
+const BASE_MCP_PROXY_URL = process.env.MCP_PROXY_URL || `ws://${MCP_SERVER_HOST}/api/remote-container/ws`
+const url = new URL(BASE_MCP_PROXY_URL)
+url.searchParams.set('proxyId', PROXY_ID)
+const MCP_PROXY_URL = url.toString()
+
+console.log(`🔗 Using proxyId: ${PROXY_ID}`)
+console.log(`🔗 MCP Server Host: ${MCP_SERVER_HOST}`)
+console.log(`🔗 MCP Proxy URL: ${MCP_PROXY_URL}`)
 
 // Ensure data directory exists
 mkdirSync(dirname(DB_PATH), { recursive: true })
@@ -426,6 +465,14 @@ async function handleListCommand() {
 
 // Initialize Hono app
 const app = new Hono()
+
+// Add CORS middleware to allow cross-origin requests
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}))
 
 // Health check endpoint
 app.get('/', (c) => {
@@ -885,15 +932,6 @@ function setupMcpServerHandlers(mcpServer: Server) {
   });
 }
 
-// Parse command line arguments
-const args = process.argv.slice(2)
-const mcpProxyArgIndex = args.findIndex(arg => arg === '--mcp-proxy' || arg === '-m')
-if (mcpProxyArgIndex !== -1 && args[mcpProxyArgIndex + 1]) {
-  // Override the MCP_PROXY_URL with command line argument
-  process.env.MCP_PROXY_URL = args[mcpProxyArgIndex + 1]
-  console.log(`Using MCP proxy URL from command line: ${args[mcpProxyArgIndex + 1]}`)
-}
-
 // Start the HTTP server
 serve({
   fetch: app.fetch,
@@ -901,6 +939,39 @@ serve({
 }, () => {
   console.log(`🚀 HTTP server started on port ${PORT}`)
   console.log(`📍 Health check: http://localhost:${PORT}`)
+})
+
+// Create and start health check server on port 11990
+const healthApp = new Hono()
+
+// Add CORS middleware to allow cross-origin requests
+healthApp.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}))
+
+// Simple ping-pong health check endpoint
+healthApp.get('/health', (c) => {
+  return c.json({ 
+    status: 'ok',
+    message: 'pong',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    proxyId: PROXY_ID,
+    mcpProxyConnected: globalWs?.readyState === WebSocket.OPEN,
+    activeServers: mcpClients.size
+  })
+})
+
+// Start the health check server
+serve({
+  fetch: healthApp.fetch,
+  port: HEALTH_CHECK_PORT
+}, () => {
+  console.log(`🏥 Health check server started on port ${HEALTH_CHECK_PORT}`)
+  console.log(`📍 Health endpoint: http://localhost:${HEALTH_CHECK_PORT}/health`)
 })
 
 // Initialize existing servers and connect to MCP proxy

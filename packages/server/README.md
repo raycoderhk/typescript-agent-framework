@@ -43,6 +43,8 @@ yarn docker:dev
 - **`docker:run`**: Runs the container with host network access, environment variables, and data volume mounting
 - **`docker:dev`**: Uses docker-compose to build and run the container with all configurations from `docker-compose.yml`
 
+> 📖 **For production deployment and GitHub Container Registry usage, see [DOCKER.md](./DOCKER.md)**
+
 
 ## WebSocket API
 
@@ -281,17 +283,41 @@ echo '{"verb":"delete","data":{"unique-name":"test"}}' | ./websocat ws://localho
 
 ## Configuration
 
+### Required ProxyId
+
+The server requires a `proxyId` parameter to connect to the MCP proxy. This can be provided via:
+
+1. **Command line argument** (recommended):
+   ```bash
+   node dist/index.js --proxy-id your-uuid-here
+   ```
+
+2. **Environment variable**:
+   ```bash
+   export PROXY_ID=your-uuid-here
+   node dist/index.js
+   ```
+
+The proxyId should be the same UUID used by the playground and must match the proxyId used when connecting to the MCP proxy.
+
+### Other Configuration
+
 Configure via `.env`:
 ```env
 PORT=3000
 DB_PATH=./data/packages.db
+MCP_PROXY_URL=ws://localhost:6050/api/remote-container/ws
+PROXY_ID=your-uuid-here
 ```
 
 ## Development
 
 ```bash
-# Start server
-yarn dev
+# Start server with proxyId
+yarn dev --proxy-id your-uuid-here
+
+# Or using environment variable
+PROXY_ID=your-uuid-here yarn dev
 
 # Run tests
 yarn test:mcp
@@ -302,8 +328,8 @@ yarn send
 # Build for production
 yarn build
 
-# Start production server
-yarn start
+# Start production server with proxyId
+yarn start --proxy-id your-uuid-here
 ```
 
 ## Database

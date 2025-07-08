@@ -148,7 +148,8 @@ describe('MCP WebSocket Server Integration Tests', () => {
         PORT: SERVER_PORT.toString(),
         DB_PATH: TEST_DB_PATH,
         MCP_PROXY_URL: MOCK_PROXY_URL,
-        NODE_ENV: 'test'
+        NODE_ENV: 'test',
+        PROXY_ID: 'test-proxy-id-12345'
       },
       stdio: ['inherit', 'pipe', 'pipe']
     })

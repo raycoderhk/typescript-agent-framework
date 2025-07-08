@@ -18,23 +18,35 @@ const searchOptions: IFuseOptions<MCPServer> = {
   keys: [
     {
       name: 'name',
-      weight: 0.3
-    },
-    {
-      name: 'shortDescription',
       weight: 0.25
     },
     {
-      name: 'keywords',
+      name: 'unique_name',
+      weight: 0.25
+    },
+    {
+      name: 'shortDescription',
       weight: 0.2
     },
     {
-      name: 'searchText',
+      name: 'short_description',
+      weight: 0.2
+    },
+    {
+      name: 'keywords',
       weight: 0.15
     },
     {
-      name: 'category',
+      name: 'parsedTags',
+      weight: 0.15
+    },
+    {
+      name: 'searchText',
       weight: 0.1
+    },
+    {
+      name: 'category',
+      weight: 0.05
     }
   ]
 };
@@ -101,11 +113,20 @@ export class MCPServerSearch {
 
   // Get all unique categories
   getCategories(): string[] {
-    const categories = new Set(
-      this.servers
-        .map(server => server.category)
-        .filter(Boolean) as string[]
-    );
+    const categories = new Set<string>();
+    
+    this.servers.forEach(server => {
+      // Add legacy category if it exists
+      if (server.category) {
+        categories.add(server.category);
+      }
+      
+      // Add parsed tags if they exist
+      if (server.parsedTags) {
+        server.parsedTags.forEach(tag => categories.add(tag));
+      }
+    });
+    
     return Array.from(categories).sort();
   }
 
@@ -143,11 +164,17 @@ export class MCPServerSearch {
     }
 
     if (filters.license) {
-      results = results.filter(server => 
-        server.licenses.some(license => 
-          license.toLowerCase().includes(filters.license!.toLowerCase())
-        )
-      );
+      results = results.filter(server => {
+        // Support both old format (licenses array) and new format (license string)
+        if (server.licenses) {
+          return server.licenses.some(license => 
+            license.toLowerCase().includes(filters.license!.toLowerCase())
+          );
+        } else if (server.license) {
+          return server.license.toLowerCase().includes(filters.license!.toLowerCase());
+        }
+        return false;
+      });
     }
 
     return results;

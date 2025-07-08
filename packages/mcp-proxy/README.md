@@ -65,17 +65,26 @@ npm run deploy
 
 ## Usage
 
-Once deployed, the worker provides:
+Once deployed, the worker provides WebSocket endpoints that require a `proxyId` parameter:
 
-- **Client endpoint**: `/client/ws` - WebSocket endpoint for web application connections
-- **Remote container endpoint**: `/remote-container/ws` - WebSocket endpoint for connecting remote containers
+- **Client endpoint**: `/client/ws?proxyId=YOUR_UUID` - WebSocket endpoint for web application connections
+- **Remote container endpoint**: `/remote-container/ws?proxyId=YOUR_UUID` - WebSocket endpoint for connecting remote containers
+
+### ProxyId System
+
+The proxy uses a `proxyId` parameter to create isolated instances. Each unique `proxyId` creates a separate Durable Object instance, allowing multiple independent proxy sessions.
+
+- **ProxyId**: A unique identifier (typically a UUID) that isolates proxy sessions
+- **Required**: All requests must include a `proxyId` search parameter
+- **Format**: Any string, but UUIDs are recommended for uniqueness
 
 ## Client Connection
 
-Web applications should connect to the client endpoint:
+Web applications should connect to the client endpoint with a proxyId:
 
 ```javascript
-const ws = new WebSocket('ws://localhost:6050/client/ws');
+const proxyId = 'your-unique-id-here'; // Generate or retrieve from storage
+const ws = new WebSocket(`ws://localhost:6050/client/ws?proxyId=${proxyId}`);
 
 // Send messages to remote container
 ws.send(JSON.stringify({
@@ -94,10 +103,11 @@ ws.onmessage = (event) => {
 
 ## Remote Container Connection
 
-Remote containers should connect to the remote container endpoint:
+Remote containers should connect to the remote container endpoint with the same proxyId:
 
 ```javascript
-const ws = new WebSocket('ws://localhost:6050/remote-container/ws');
+const proxyId = 'your-unique-id-here'; // Same as used by client
+const ws = new WebSocket(`ws://localhost:6050/remote-container/ws?proxyId=${proxyId}`);
 
 // Handle messages from clients
 ws.onmessage = (event) => {

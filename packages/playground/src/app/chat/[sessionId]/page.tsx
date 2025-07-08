@@ -1,25 +1,21 @@
 "use client";
 
+import React from "react";
 import { useParams } from "next/navigation";
-import { ChatContainer } from "@/components/chat";
+import { EnhancedChatContainer } from "@/components/chat";
 
-export default function ChatSessionPage() {
+export default function ChatPage() {
   const params = useParams();
   const sessionId = params?.sessionId as string;
-  const isNewChat = sessionId === 'new';
-  
 
   return (
-    <div className="flex flex-col h-screen" style={{ background: "#09090B" }}>
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-[800px] h-[calc(100vh-80px)]">
-          <div className="h-full flex flex-col">
-            <ChatContainer 
-            title={isNewChat ? "New Chat" : `Chat with Vista`}
-            />
-          </div>
-        </div>
-      </div>
+    <div className="h-screen w-full bg-[#14161D]">
+      <EnhancedChatContainer 
+        sessionId={sessionId}
+        enableSessionManagement={true}
+        showHeader={true}
+        className="h-full"
+      />
     </div>
   );
 }

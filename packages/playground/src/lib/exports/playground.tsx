@@ -8,6 +8,12 @@ import { MCPServer } from "../../types/mcp-server";
 import { getCurrentModelConfig, AIModelConfig } from "../../lib/storage";
 import { usePlaygroundConfig } from './playground-provider';
 
+// Extended interface for model config with validation status (matching ModelSelector)
+interface AIModelConfigWithValidation extends AIModelConfig {
+  isValid?: boolean;
+  validationError?: string | null;
+}
+
 export interface PlaygroundProps {
   className?: string;
   style?: React.CSSProperties;
@@ -59,9 +65,26 @@ export function Playground({
     setEnabledServerCount(count);
   };
 
-  const handleModelChange = useCallback((config: AIModelConfig | null) => {
+  const handleModelChange = useCallback((config: AIModelConfigWithValidation | null) => {
     console.log('Model config updated:', config);
-    setModelConfig(config);
+    
+    // Store the config without validation properties for regular use
+    const baseConfig: AIModelConfig | null = config ? {
+      provider: config.provider,
+      apiKey: config.apiKey,
+      model: config.model,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      maxSteps: config.maxSteps,
+      systemPrompt: config.systemPrompt
+    } : null;
+    
+    setModelConfig(baseConfig);
+    
+    // You can use config.isValid and config.validationError here for UI feedback
+    if (config && !config.isValid && config.validationError) {
+      console.warn('Model config validation failed:', config.validationError);
+    }
   }, []);
 
   // Determine chat title based on selected server

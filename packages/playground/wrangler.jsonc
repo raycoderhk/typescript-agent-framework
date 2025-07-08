@@ -29,7 +29,8 @@
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 */
 	"vars": { 
-		"NEXT_PUBLIC_MCP_PROXY_WS_URL": "ws://localhost:6050/client/ws" 
+		"NEXT_PUBLIC_MCP_PROXY_WS_URL": "ws://localhost:6050/client/ws",
+		"NEXT_PUBLIC_MCP_PROXY_URL": "http://localhost:6050"
 	}
 	/**
 	 * Note: Use secrets to store sensitive data.

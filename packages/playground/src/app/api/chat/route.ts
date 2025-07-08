@@ -189,7 +189,7 @@ async function createProvider(provider: 'openai' | 'anthropic', apiKey: string) 
 let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
 
 // Function to get or create MCP client using AI SDK's built-in support
-async function getMCPClient() {
+async function getMCPClient(proxyId?: string) {
   // If client exists but is closed, reset it
   if (mcpClient) {
     try {
@@ -202,11 +202,19 @@ async function getMCPClient() {
   }
   
   if (!mcpClient) {
+    // Construct URL with proxyId if provided
+    const baseUrl = process.env.NEXT_PUBLIC_MCP_PROXY_URL || 'http://localhost:6050';
+    const url = new URL('/sse', baseUrl);
+    
+    if (proxyId) {
+      url.searchParams.set('proxyId', proxyId);
+    }
+    
     // Use the built-in SSE transport from AI SDK
     mcpClient = await createMCPClient({
       transport: {
         type: 'sse',
-        url: 'http://localhost:6050/sse?sessionId=localhost',
+        url: url.toString(),
         // Optional headers for authentication
         headers: {}
       }
@@ -248,7 +256,7 @@ export async function POST(request: NextRequest) {
     // Get MCP client and tools (with graceful degradation)
     let mcpTools = {};
     try {
-      const client = await getMCPClient();
+      const client = await getMCPClient(body.mcpProxyId);
       mcpTools = await client.tools();
     } catch (mcpError) {
       console.warn('MCP tools unavailable, continuing without tools:', mcpError);

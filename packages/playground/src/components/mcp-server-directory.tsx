@@ -137,15 +137,26 @@ export function MCPServerDirectory({
 
   const handleConfigurationSave = async (server: MCPServer, config: MCPServerConfigData) => {
     try {
+      // Get the MCP server config (backward compatibility)
+      const mcpConfig = server.mcpServerConfig || (
+        server.mcp_server_config ? 
+          Object.values(server.mcp_server_config.mcpServers)[0] : 
+          null
+      );
+      
+      if (!mcpConfig) {
+        throw new Error(`No valid configuration found for server: ${server.name || server.unique_name}`);
+      }
+      
       // Prepare the server configuration with substituted values
       const serverConfig = {
         uniqueName: server.id,
-        command: server.mcpServerConfig.command,
-        args: server.mcpServerConfig.args.map(arg => 
+        command: mcpConfig.command,
+        args: mcpConfig.args.map(arg => 
           substituteInputValues(config, arg)
         ),
         env: Object.fromEntries(
-          Object.entries(server.mcpServerConfig.env || {}).map(([key, value]) => [
+          Object.entries(mcpConfig.env || {}).map(([key, value]) => [
             key,
             substituteInputValues(config, value)
           ])
@@ -189,15 +200,28 @@ export function MCPServerDirectory({
           
           console.log(`Re-enabling configured server: ${server.name}`);
           
+          // Get the MCP server config (backward compatibility)
+          const mcpConfig = server.mcpServerConfig || (
+            server.mcp_server_config ? 
+              Object.values(server.mcp_server_config.mcpServers)[0] : 
+              null
+          );
+          
+          if (!mcpConfig) {
+            console.error(`No valid configuration found for server: ${server.name || server.unique_name}`);
+            alert(`No valid configuration found for server: ${server.name || server.unique_name}`);
+            return;
+          }
+          
           // Prepare the server configuration with substituted values
           const serverConfig = {
             uniqueName: server.id,
-            command: server.mcpServerConfig.command,
-            args: server.mcpServerConfig.args.map(arg => 
+            command: mcpConfig.command,
+            args: mcpConfig.args.map(arg => 
               substituteInputValues(savedConfig, arg)
             ),
             env: Object.fromEntries(
-              Object.entries(server.mcpServerConfig.env || {}).map(([key, value]) => [
+              Object.entries(mcpConfig.env || {}).map(([key, value]) => [
                 key,
                 substituteInputValues(savedConfig, value)
               ])
@@ -224,11 +248,24 @@ export function MCPServerDirectory({
       } else {
         // Handle non-configured servers (existing logic)
         try {
+          // Get the MCP server config (backward compatibility)
+          const mcpConfig = server.mcpServerConfig || (
+            server.mcp_server_config ? 
+              Object.values(server.mcp_server_config.mcpServers)[0] : 
+              null
+          );
+          
+          if (!mcpConfig) {
+            console.error(`No valid configuration found for server: ${server.name || server.unique_name}`);
+            alert(`No valid configuration found for server: ${server.name || server.unique_name}`);
+            return;
+          }
+          
           const success = await addServer({
             uniqueName: server.id,
-            command: server.mcpServerConfig.command,
-            args: server.mcpServerConfig.args,
-            env: server.mcpServerConfig.env || {}
+            command: mcpConfig.command,
+            args: mcpConfig.args,
+            env: mcpConfig.env || {}
           });
           
           if (success) {
@@ -304,19 +341,7 @@ export function MCPServerDirectory({
   return (
     <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
-      <div className="p-6 border-b border-[rgba(255,255,255,0.1)]">
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl font-bold text-white/95">MCP Server Directory</h1>
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-sm text-white/60">
-                Local Tools {isConnected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-          </div>
-          <p className="text-sm text-white/60">Discover and connect to Model Context Protocol servers</p>
-        </div>
+      <div className="p-6">
         
         {/* Search */}
         <div className="relative mb-4">
@@ -324,17 +349,17 @@ export function MCPServerDirectory({
             type="text"
             value={searchQuery}
             onChange={handleSearchChange}
-            placeholder="Search servers..."
-            className="w-full bg-[#17181A] border border-[rgba(255,255,255,0.2)] rounded-lg px-3 py-2 pl-9 text-sm text-white/80 placeholder:text-white/40 focus:outline-none focus:border-[rgba(255,255,255,0.4)]"
+            placeholder="I want a MCP Server that can..."
+            className="w-full bg-[#323546] border-none rounded-lg px-3 py-2 pl-9 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-0"
           />
           <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40"
-            width="14"
-            height="14"
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+            stroke="rgba(255, 255, 255, 0.6)"
+            strokeWidth="1.2"
           >
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
@@ -349,10 +374,10 @@ export function MCPServerDirectory({
                 key={category}
                 onClick={() => handleCategoryChange(category)}
                 className={cn(
-                  "px-3 py-1 text-xs rounded-full border transition-all duration-200",
+                  "px-3 py-1 text-xs rounded-full border-none transition-all duration-200 h-6 flex items-center",
                   selectedCategory === category
                     ? "bg-[rgba(114,255,192,0.1)] border-[rgba(114,255,192,0.3)] text-[rgba(114,255,192,0.9)]"
-                    : "bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)] text-white/60 hover:border-[rgba(255,255,255,0.2)]"
+                    : "bg-[#323546] text-white hover:bg-[#3A3E54]"
                 )}
               >
                 {category}
@@ -372,11 +397,11 @@ export function MCPServerDirectory({
         </div>
       </div>
 
-      {/* Results summary */}
-      <div className="px-6 py-3 text-sm text-white/60 border-b border-[rgba(255,255,255,0.05)]">
+      {/* MCP Indicator */}
+      <div className="px-6 py-3">
         <div className="flex items-center justify-between">
-          <span>
-            {filteredServers.length} of {servers.length} servers
+          <span className="font-['Space_Grotesk'] font-normal text-sm text-white">
+            Showing {filteredServers.length} of {servers.length} MCPs
             {searchQuery && ` matching "${searchQuery}"`}
             {selectedCategory && ` in "${selectedCategory}"`}
           </span>

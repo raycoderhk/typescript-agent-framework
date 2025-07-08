@@ -30,8 +30,15 @@ WORKDIR /workspace/packages/server
 # Create directory for SQLite database
 RUN mkdir -p /workspace/packages/server/data
 
-# Expose port
-EXPOSE ${PORT:-3000}
+# Expose ports - main server and health check
+EXPOSE ${PORT:-3001}
+EXPOSE ${HEALTH_CHECK_PORT:-11990}
 
-# Use dev command instead of building
-CMD ["pnpm", "dev"]
+# Set default environment variables
+ENV NODE_ENV=production
+ENV PROXY_ID=""
+ENV MCP_SERVER_HOST="localhost:6050"
+ENV HEALTH_CHECK_PORT=11990
+
+# Use the production start command with proxy-id argument from environment
+CMD ["sh", "-c", "pnpm dev --proxy-id=${PROXY_ID} --mcp-server-host=${MCP_SERVER_HOST}"]

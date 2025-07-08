@@ -14,16 +14,22 @@ export function ChatHeader({
   return (
     <div 
       className={cn(
-        "flex justify-between items-center border-b",
+        "flex justify-between items-center w-full",
         className
       )}
       style={{
-        background: "#151515",
-        borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
-        padding: "12px 24px"
+        background: "#151515"
       }}
     >
-      <h2 className="font-bold text-[16px] text-[rgba(255,255,255,0.8)] font-[var(--font-space-grotesk)]">
+      <h2 
+        className="font-bold text-[rgba(255,255,255,0.8)]"
+        style={{
+          fontFamily: "Space Grotesk",
+          fontSize: "16px",
+          fontWeight: 700,
+          lineHeight: "1em"
+        }}
+      >
         {title}
       </h2>
     </div>

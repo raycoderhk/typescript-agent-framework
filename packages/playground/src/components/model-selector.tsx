@@ -18,9 +18,15 @@ interface APIModel {
   description?: string;
 }
 
+// Extended interface for model config with validation status
+interface AIModelConfigWithValidation extends AIModelConfig {
+  isValid?: boolean;
+  validationError?: string | null;
+}
+
 export interface ModelSelectorProps {
   className?: string;
-  onModelChange?: (config: AIModelConfig | null) => void;
+  onModelChange?: (config: AIModelConfigWithValidation | null) => void;
 }
 
 export function ModelSelector({ className, onModelChange }: ModelSelectorProps) {
@@ -93,7 +99,14 @@ export function ModelSelector({ className, onModelChange }: ModelSelectorProps) 
         const newConfig = { ...config, model: models[0].id };
         setConfig(newConfig);
         saveAIModelConfig(newConfig);
-        onModelChange?.(newConfig);
+        
+        // Notify parent with validation status
+        const configWithValidation: AIModelConfigWithValidation = {
+          ...newConfig,
+          isValid: true, // We know it's valid since we have models
+          validationError: null
+        };
+        onModelChange?.(configWithValidation);
       }
       
     } catch (error) {
@@ -116,10 +129,21 @@ export function ModelSelector({ className, onModelChange }: ModelSelectorProps) 
 
   // Save config and notify parent
   useEffect(() => {
-    const configToSave = availableModels.length > 0 ? config : null;
+    // Always save config to localStorage regardless of validation status
     saveAIModelConfig(config);
+    
+    // Always notify parent of current config state
+    // Include validation status in the notification
+    const configWithValidation: AIModelConfigWithValidation = {
+      ...config,
+      isValid: availableModels.length > 0 && config.apiKey.trim().length > 0,
+      validationError: validationError
+    };
+    
+    // Only pass config if we have at least an API key (even if validation failed)
+    const configToSave = config.apiKey.trim().length > 0 ? configWithValidation : null;
     onModelChange?.(configToSave);
-  }, [config, availableModels]); // Removed onModelChange from dependencies to prevent infinite loop
+  }, [config, availableModels, validationError]); // Added validationError to dependencies
 
   const handleProviderChange = (provider: 'openai' | 'anthropic') => {
     // Load the saved config for this provider, or use empty values if none exists

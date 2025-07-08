@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { getOrCreateProxyId, buildProxyUrl } from '@/lib/storage';
 
 export interface McpServer {
   uniqueName: string;
@@ -125,7 +126,10 @@ interface McpServerManagerActions {
 
 export type UseMcpServerManagerReturn = McpServerManagerState & McpServerManagerActions;
 
-const MCP_PROXY_WS_URL = process.env.NEXT_PUBLIC_MCP_PROXY_WS_URL || 'ws://localhost:6050/client/ws';
+function getMcpProxyWsUrl(): string {
+  const baseUrl = process.env.NEXT_PUBLIC_MCP_PROXY_WS_URL || 'ws://localhost:6050/client/ws';
+  return buildProxyUrl(baseUrl);
+}
 
 export function useMcpServerManager(): UseMcpServerManagerReturn {
   const [state, setState] = useState<McpServerManagerState>({
@@ -289,7 +293,7 @@ export function useMcpServerManager(): UseMcpServerManagerReturn {
 
     try {
       // Create WebSocket connection directly to the MCP proxy server
-      const ws = new WebSocket(MCP_PROXY_WS_URL);
+      const ws = new WebSocket(getMcpProxyWsUrl());
       wsRef.current = ws;
 
       ws.onopen = () => {
