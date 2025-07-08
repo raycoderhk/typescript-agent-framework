@@ -41,6 +41,17 @@ export interface MCPServerConfigData {
   lastUpdated?: string;
 }
 
+// MCP Server installation and runtime states
+export type MCPServerInstallationState = 'not-installed' | 'installed-disabled' | 'installed-enabled';
+
+export interface MCPServerRuntimeState {
+  installationState: MCPServerInstallationState;
+  isRunning: boolean; // From WebSocket/backend
+  hasConfiguration: boolean; // From localStorage
+  isConfigured: boolean; // Has all required configuration
+  isLoading: boolean; // Currently being installed/uninstalled
+}
+
 export interface MCPServer {
   id: string; // UUID
   git_repository: string; // GitHub repository URL

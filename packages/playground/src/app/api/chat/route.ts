@@ -12,7 +12,9 @@ interface ChatRequest {
   maxTokens?: number;
   maxSteps?: number;
   systemPrompt?: string;
-  mcpProxyId?: string; // Optional MCP proxy session ID
+  mcpProxyId?: string; // MCP proxy ID for Durable Object routing
+  mcpSessionId?: string; // Unique session ID for SSE transport
+  enableMCPTools?: boolean; // Whether to enable MCP tools for this request
 }
 
 // Error types and user-friendly messages
@@ -189,7 +191,7 @@ async function createProvider(provider: 'openai' | 'anthropic', apiKey: string) 
 let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
 
 // Function to get or create MCP client using AI SDK's built-in support
-async function getMCPClient(proxyId?: string) {
+async function getMCPClient(proxyId?: string, sessionId?: string) {
   // If client exists but is closed, reset it
   if (mcpClient) {
     try {
@@ -202,13 +204,18 @@ async function getMCPClient(proxyId?: string) {
   }
   
   if (!mcpClient) {
-    // Construct URL with proxyId if provided
+    // Construct URL with both proxyId (for DO routing) and sessionId (for SSE transport)
     const baseUrl = process.env.NEXT_PUBLIC_MCP_PROXY_URL || 'http://localhost:6050';
     const url = new URL('/sse', baseUrl);
     
-    if (proxyId) {
+    if (proxyId && sessionId) {
+      // proxyId is needed for Durable Object routing
       url.searchParams.set('proxyId', proxyId);
+      // sessionId is needed for the SSE transport within the DO
+      url.searchParams.set('sessionId', sessionId);
     }
+    
+    console.log('Creating MCP client with URL:', url.toString());
     
     // Use the built-in SSE transport from AI SDK
     mcpClient = await createMCPClient({
@@ -237,7 +244,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const { messages, provider, model, ...otherParams } = body;
+    const { messages, provider, model, mcpProxyId, mcpSessionId, enableMCPTools, ...otherParams } = body;
 
     // Get API key from Authorization header instead of environment variables
     const authHeader = request.headers.get('authorization');
@@ -253,14 +260,19 @@ export async function POST(request: NextRequest) {
     // Create the provider
     const providerInstance = await createProvider(provider, apiKey);
 
-    // Get MCP client and tools (with graceful degradation)
+    // Only get MCP client and tools if explicitly enabled
     let mcpTools = {};
-    try {
-      const client = await getMCPClient(body.mcpProxyId);
-      mcpTools = await client.tools();
-    } catch (mcpError) {
-      console.warn('MCP tools unavailable, continuing without tools:', mcpError);
-      // Continue without tools rather than failing completely
+    if (enableMCPTools && mcpProxyId && mcpSessionId) {
+      try {
+        const client = await getMCPClient(mcpProxyId, mcpSessionId);
+        mcpTools = await client.tools();
+        console.log('MCP tools retrieved successfully with proxyId:', mcpProxyId, 'sessionId:', mcpSessionId);
+      } catch (mcpError) {
+        console.warn('MCP tools unavailable, continuing without tools:', mcpError);
+        // Continue without tools rather than failing completely
+      }
+    } else {
+      console.log('MCP tools disabled for this request');
     }
 
     const result = streamText({

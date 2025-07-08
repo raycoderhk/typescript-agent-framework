@@ -101,13 +101,18 @@ export class McpServerProxy implements IMcpServer {
     try {
       // Handle both string and ArrayBuffer data
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      console.log('McpServerProxy: Received message from remote container:', messageStr.substring(0, 200) + '...');
+      
       const message = JSON.parse(messageStr) as JSONRPCMessage;
       
       // Forward the message to the connected transport
       if (this.connectedTransport) {
+        console.log('McpServerProxy: Forwarding message to SSE transport');
         this.connectedTransport.send?.(message).catch((error: unknown) => {
           console.error('Error forwarding message to transport:', error);
         });
+      } else {
+        console.warn('McpServerProxy: No connected transport to forward message to');
       }
     } catch (error) {
       console.error('Error parsing proxy message:', error);
@@ -119,17 +124,24 @@ export class McpServerProxy implements IMcpServer {
    * We mimic the McpServer.connect() behavior but add our proxy logic
    */
   async connect(transport: Transport): Promise<void> {
+    console.log('McpServerProxy: Connecting transport');
+    
     // Set the new transport as the active one
     this.connectedTransport = transport;
     
     try {
+      console.log('McpServerProxy: Starting transport...');
       await this.connectedTransport.start();
+      console.log('McpServerProxy: Transport started successfully');
     } catch (error) {
       console.error('Failed to start transport:', error);
       throw error;
     }
     
+    console.log('McpServerProxy: Setting up transport handlers');
+    
     transport.onmessage = (message: JSONRPCMessage) => {
+      console.log('McpServerProxy: Transport received message:', JSON.stringify(message, null, 2));
       this.forwardToProxy(JSON.stringify(message));
     };
     
@@ -139,8 +151,11 @@ export class McpServerProxy implements IMcpServer {
     };
     
     transport.onclose = () => {
+      console.log('McpServerProxy: Transport closed');
       this.connectedTransport = null;
     };
+    
+    console.log('McpServerProxy: Transport connection completed');
   }
 
   /**
@@ -150,14 +165,20 @@ export class McpServerProxy implements IMcpServer {
     // Use the single source of truth for connection checking
     const isConnected = this.isConnected();
     
+    console.log('McpServerProxy: Attempting to forward message to remote container, connected:', isConnected);
+    
     if (isConnected && this.proxyConnection) {
       try {
+        const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+        console.log('McpServerProxy: Sending message to remote container:', messageStr.substring(0, 200) + '...');
         this.proxyConnection.send(data);
       } catch (error) {
         console.error('Error sending message to proxy:', error);
         // If sending fails, update our connection state
         this.isProxyConnected = false;
       }
+    } else {
+      console.warn('McpServerProxy: Cannot forward message - not connected to remote container');
     }
   }
 } 

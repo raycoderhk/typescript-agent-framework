@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 import { MCPServer } from "@/types/mcp-server";
 import { loadMCPConfig } from "@/lib/storage";
-import { ChevronDown, MoreVertical, Star, Package } from "lucide-react";
+import { MoreVertical, Star } from "lucide-react";
 import { Switch } from "./ui/switch";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -14,7 +14,14 @@ import { ServerActionsDropdown, InstallDropdown } from "./server-dropdown-menu";
 export interface MCPServerItemProps {
   server: MCPServer;
   isEnabled?: boolean;
+  isInstalled?: boolean;
   isLoading?: boolean;
+  serverState?: {
+    installationState: 'not-installed' | 'installed-disabled' | 'installed-enabled';
+    hasConfiguration: boolean;
+    isConfigured: boolean;
+    isRunning: boolean;
+  };
   onInstall?: (server: MCPServer) => void;
   onConfigure?: (server: MCPServer) => void;
   onToggle?: (server: MCPServer, enabled: boolean) => void;
@@ -24,7 +31,9 @@ export interface MCPServerItemProps {
 export function MCPServerItem({
   server,
   isEnabled = false,
+  isInstalled = false,
   isLoading = false,
+  serverState,
   onInstall,
   onConfigure,
   onToggle,
@@ -34,19 +43,41 @@ export function MCPServerItem({
   const requiresConfiguration = server.inputs && server.inputs.length > 0;
   const configuration = requiresConfiguration ? loadMCPConfig(server.id) : null;
   const isConfigured = configuration?.isConfigured || false;
+  
+  // Track local loading state for toggle operations
+  const [isToggleLoading, setIsToggleLoading] = React.useState(false);
+  
+  // Determine display state based on serverState or fallback to props
+  const displayState = serverState?.installationState || 
+    (isEnabled ? 'installed-enabled' : 
+     isInstalled ? 'installed-disabled' : 'not-installed');
 
-  const handleInstallClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggle = async (checked: boolean) => {
+    if (isToggleLoading) return; // Prevent multiple clicks during loading
+    
+    console.log(`Toggle started for ${server.name}: ${checked}, isLoading: ${isLoading}, isToggleLoading: ${isToggleLoading}`);
+    
+    setIsToggleLoading(true);
+    try {
+      await onToggle?.(server, checked);
+    } catch (error) {
+      console.error(`Toggle failed for ${server.name}:`, error);
+    } finally {
+      // Reset loading state after a delay to show the animation
+      // Use a longer delay to ensure the backend operation completes
+      setTimeout(() => {
+        console.log(`Toggle completed for ${server.name}, resetting loading state`);
+        setIsToggleLoading(false);
+      }, 1000); // Increased from 500ms to 1000ms
+    }
+  };
+
+  const handleInstall = () => {
     onInstall?.(server);
   };
 
-  const handleConfigureClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleConfigure = () => {
     onConfigure?.(server);
-  };
-
-  const handleToggle = (checked: boolean) => {
-    onToggle?.(server, checked);
   };
 
   // Map tags to badge variants - using parsedTags from the new format
@@ -69,7 +100,7 @@ export function MCPServerItem({
   };
 
   // Use parsedTags if available, fallback to keywords for backward compatibility
-  const displayTags = server.parsedTags && server.parsedTags.length > 0 ? server.parsedTags : server.keywords;
+  const displayTags = server.parsedTags && server.parsedTags.length > 0 ? server.parsedTags : (server.keywords || []);
   const visibleTags = displayTags.slice(0, 3); // Show only 3 tags to ensure single line
   const remainingTags = displayTags.slice(3);
   const remainingTagsCount = remainingTags.length;
@@ -81,7 +112,7 @@ export function MCPServerItem({
           "flex flex-col gap-3 p-5 rounded-xl transition-all duration-200",
           "bg-gradient-to-br from-white/[0.08] to-black/[0.08] border border-white/20",
           "hover:border-purple-500",
-          isEnabled && "border-[#5CC489]",
+          displayState === 'installed-enabled' && "border-[#5CC489]",
           className
         )}
       >
@@ -113,26 +144,50 @@ export function MCPServerItem({
 
             {/* Action buttons */}
             <div className="flex items-center gap-2">
-              {isEnabled ? (
-                // Enabled state: Switch + 3-dots menu
+              {displayState === 'installed-enabled' ? (
+                // Enabled state: Green switch + 3-dots menu (from Figma design)
                 <div className="flex items-center gap-2">
                   <Switch 
-                    checked={isEnabled}
+                    checked={true}
                     onCheckedChange={handleToggle}
-                    disabled={isLoading}
+                    disabled={false}
+                    isLoading={isToggleLoading || isLoading}
                   />
                   <ServerActionsDropdown
                     server={server}
                     onConfigure={onConfigure}
-                    onUninstall={(server) => onToggle?.(server, false)}
+                    onUninstall={(server) => {
+                      if (!isToggleLoading) {
+                        onToggle?.(server, false);
+                      }
+                    }}
+                  />
+                </div>
+              ) : displayState === 'installed-disabled' ? (
+                // Installed but disabled: Gray switch + 3-dots menu
+                <div className="flex items-center gap-2">
+                  <Switch 
+                    checked={false}
+                    onCheckedChange={handleToggle}
+                    disabled={false}
+                    isLoading={isToggleLoading || isLoading}
+                  />
+                  <ServerActionsDropdown
+                    server={server}
+                    onConfigure={onConfigure}
+                    onUninstall={(server) => {
+                      if (!isToggleLoading) {
+                        onToggle?.(server, false);
+                      }
+                    }}
                   />
                 </div>
               ) : (
-                // Install state: Direct Install button + dropdown for install options + 3-dots menu
+                // Not installed: Install button + dropdown + 3-dots menu
                 <div className="flex items-center gap-2">
                   <div className="flex items-center">
                     <Button
-                      onClick={handleInstallClick}
+                      onClick={handleInstall}
                       disabled={isLoading}
                       variant="outline"
                       size="sm"
@@ -161,18 +216,7 @@ export function MCPServerItem({
           </p>
         </div>
 
-        {/* Enabled state footer */}
-        {isEnabled && (
-          <div className="flex items-center justify-between p-4 -mx-5 mb-3 border-t border-white/10 bg-white/[0.02]">
-            <div className="flex items-center gap-1.5">
-              <Package className="h-4 w-4 text-white/80" />
-              <span className="text-xs text-white font-normal">
-                3 of 6 Tools Enabled
-              </span>
-            </div>
-            <ChevronDown className="h-4 w-4 text-white/60 rotate-[-90deg]" />
-          </div>
-        )}
+
 
         {/* Tags - Moved to bottom to eliminate empty space */}
         {displayTags.length > 0 && (

@@ -17,6 +17,8 @@ interface DockerInstallModalProps {
   isOpen: boolean;
   onClose: () => void;
   onInstallationComplete?: () => void;
+  proxyId?: string; // Optional proxyId to use instead of generating one
+  reason?: 'initial' | 'mismatch'; // Reason for showing the modal
 }
 
 // Generate a random UUID for proxy-id
@@ -31,10 +33,12 @@ function generateUUID(): string {
 export function DockerInstallModal({ 
   isOpen, 
   onClose, 
-  onInstallationComplete 
+  onInstallationComplete,
+  proxyId: providedProxyId,
+  reason = 'initial'
 }: DockerInstallModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
-  const [proxyId, setProxyId] = useState<string>("");
+  const [currentProxyId, setCurrentProxyId] = useState<string>("");
   const [dockerCommand, setDockerCommand] = useState<string>("");
   const [copied, setCopied] = useState(false);
   
@@ -47,18 +51,27 @@ export function DockerInstallModal({
   // Initialize proxy ID and docker command
   useEffect(() => {
     if (isOpen) {
-      // Check if we already have a proxy ID stored
-      const existingProxyId = localStorage.getItem('mcp-toolbox-proxy-id');
-      const currentProxyId = existingProxyId || generateUUID();
+      let finalProxyId: string;
       
-      if (!existingProxyId) {
-        localStorage.setItem('mcp-toolbox-proxy-id', currentProxyId);
+      if (providedProxyId) {
+        // Use provided proxyId (for mismatch scenarios)
+        finalProxyId = providedProxyId;
+        // Update localStorage to match
+        localStorage.setItem('playground_proxy_id', finalProxyId);
+      } else {
+        // Check if we already have a proxy ID stored
+        const existingProxyId = localStorage.getItem('playground_proxy_id');
+        finalProxyId = existingProxyId || generateUUID();
+        
+        if (!existingProxyId) {
+          localStorage.setItem('playground_proxy_id', finalProxyId);
+        }
       }
       
-      setProxyId(currentProxyId);
-      setDockerCommand(`docker run -d -p 11990:11990 --name mcp-toolbox --proxy-id ${currentProxyId} null-shot/mcp-toolbox:latest`);
+      setCurrentProxyId(finalProxyId);
+      setDockerCommand(`docker run -d -p 11990:11990 --name mcp-toolbox --proxy-id ${finalProxyId} null-shot/mcp-toolbox:latest`);
     }
-  }, [isOpen]);
+  }, [isOpen, providedProxyId]);
 
   // Check connection status
   const checkConnection = async () => {
@@ -215,7 +228,7 @@ export function DockerInstallModal({
               lineHeight: '1em' 
             }}
           >
-            Install Local Toolbox
+            {reason === 'mismatch' ? 'Restart Local Toolbox' : 'Install Local Toolbox'}
           </h2>
           <button 
             onClick={handleClose}
@@ -232,6 +245,32 @@ export function DockerInstallModal({
             <X className="w-3 h-3 text-white" strokeWidth={1.2} />
           </button>
         </div>
+
+        {/* Mismatch Warning */}
+        {reason === 'mismatch' && (
+          <div className="w-full" style={{ padding: '0 32px 16px' }}>
+            <div 
+              className="rounded-lg p-4 border-l-4"
+              style={{
+                backgroundColor: '#2D1B69',
+                borderLeftColor: '#7849EF'
+              }}
+            >
+              <p 
+                className="text-white/90 text-sm"
+                style={{
+                  fontFamily: 'Space Grotesk',
+                  fontWeight: 400,
+                  fontSize: '14px',
+                  lineHeight: '1.5em'
+                }}
+              >
+                <strong>ProxyId Mismatch Detected:</strong> Your local server is running with a different ProxyId than expected. 
+                Please restart your Docker container with the correct ProxyId shown below to ensure proper connection.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Progress Stepper */}
         <div className="w-full flex items-center justify-center" style={{ padding: '0 32px 24px' }}>
@@ -380,7 +419,7 @@ export function DockerInstallModal({
                         fontSize: '18px'
                       }}
                     >
-                      Start MCP Toolbox
+                      {reason === 'mismatch' ? 'Restart MCP Toolbox' : 'Start MCP Toolbox'}
                     </h3>
                     <p 
                       className="text-white/60 text-sm mt-1"
@@ -390,7 +429,10 @@ export function DockerInstallModal({
                         fontSize: '14px'
                       }}
                     >
-                      Copy and run this command in your terminal to start the MCP toolbox
+                      {reason === 'mismatch' 
+                        ? 'Stop the current container and run this command with the correct ProxyId'
+                        : 'Copy and run this command in your terminal to start the MCP toolbox'
+                      }
                     </p>
                   </div>
                 </div>
@@ -428,7 +470,7 @@ export function DockerInstallModal({
                         fontFamily: 'Monaco, Consolas, monospace'
                       }}
                     >
-                      Proxy ID: {proxyId}
+                      Proxy ID: {currentProxyId}
                     </div>
                   </div>
                 </div>

@@ -44,10 +44,6 @@
   --radius-xl: calc(var(--radius) + 4px);
   
   /* Chat specific variables */
-  --color-chat-user-bg: var(--chat-user-bg);
-  --color-chat-user-text: var(--chat-user-text);
-  --color-chat-agent-bg: var(--chat-agent-bg);
-  --color-chat-agent-text: var(--chat-agent-text);
   --color-chat-timestamp: var(--chat-timestamp);
   
   /* Chat animation variables */
@@ -90,11 +86,7 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   
-  /* Chat theme variables - from Figma */
-  --chat-user-bg: #17181A; /* User bubble background (dark gray) */
-  --chat-user-text: rgba(255, 255, 255, 0.8); /* User text color */
-  --chat-agent-bg: linear-gradient(to bottom right, #72FFC0, #20845F); /* Agent bubble gradient */
-  --chat-agent-text: rgba(255, 255, 255, 0.8); /* Agent text color */
+  /* Chat theme variables - simplified */
   --chat-timestamp: rgba(255, 255, 255, 0.4); /* Timestamp text color */
   
   /* Chat animation variables */
@@ -136,11 +128,7 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   
-  /* Chat theme variables - dark mode (same as light since the design is dark by default) */
-  --chat-user-bg: #17181A; /* User bubble background (dark gray) */
-  --chat-user-text: rgba(255, 255, 255, 0.8); /* User text color */
-  --chat-agent-bg: linear-gradient(to bottom right, #72FFC0, #20845F); /* Agent bubble gradient */
-  --chat-agent-text: rgba(255, 255, 255, 0.8); /* Agent text color */
+  /* Chat theme variables - simplified */
   --chat-timestamp: rgba(255, 255, 255, 0.4); /* Timestamp text color */
   
   /* Chat animation variables */
@@ -167,7 +155,7 @@
   }
 }
 
-/* Chat typing animation */
+/* Chat thinking animation */
 .chat-thinking-animation {
   animation: pulse 1.5s infinite ease-in-out;
 }
@@ -235,14 +223,25 @@
 }
 
 /* For a thinking animation */
-@keyframes pulse {
-  0% { opacity: 0.8; }
-  50% { opacity: 0.4; }
-  100% { opacity: 0.8; }
+.chat-thinking-dots {
+  display: inline-flex;
+  gap: 2px;
 }
 
-.chat-thinking-animation {
-  animation: pulse 1.5s infinite ease-in-out;
+.chat-thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.5);
+  animation: thinking-bounce 1.4s infinite ease-in-out both;
+}
+
+.chat-thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+.chat-thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes thinking-bounce {
+  0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+  40% { transform: scale(1.2); opacity: 1; }
 }
 
 /* MCP Playground Styles */

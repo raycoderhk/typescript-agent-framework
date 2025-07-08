@@ -250,6 +250,7 @@ export class McpServerProxyDO extends McpServerDO {
     // Handle messages from remote container
     if (attachment && 'isRemoteContainer' in attachment && attachment.isRemoteContainer) {
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      console.log('MCP Proxy: Received message from remote container:', messageStr.substring(0, 200) + '...');
       
       // First, forward to the MCP proxy for transport handling
       this.mcpProxy.handleProxyMessage(data);
@@ -281,6 +282,7 @@ export class McpServerProxyDO extends McpServerDO {
     // Handle messages from clients
     else if (attachment && 'isClient' in attachment && attachment.isClient) {
       const messageStr = typeof data === 'string' ? data : new TextDecoder().decode(data);
+      console.log('MCP Proxy: Received message from client:', messageStr.substring(0, 200) + '...');
       
       // Check connection state before forwarding
       if (!this.mcpProxy.isConnected()) {
@@ -300,9 +302,11 @@ export class McpServerProxyDO extends McpServerDO {
         return;
       }
       
+      console.log('MCP Proxy: Forwarding client message to remote container');
       this.mcpProxy.forwardToProxy(messageStr);
     }
     else {
+      console.log('MCP Proxy: Processing message via transport for MCP client connection');
       // Process the message via transport for consistency (MCP client connections)
       super.webSocketMessage(ws, data);
     }

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Send } from "lucide-react";
-import { getCurrentModelConfig, loadAIModelConfig } from "@/lib/storage";
+import { getCurrentModelConfig, loadAIModelConfig, saveAIModelConfig } from "@/lib/storage";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -15,7 +15,7 @@ interface ChatInputProps {
   availableModels?: Array<{ id: string; name: string; provider: string }>;
   className?: string;
   error?: string;
-  onClearError?: () => void;
+  onClearError?: () => void; // Optional since we're not using it in the simplified error approach
 }
 
 export function ChatInput({
@@ -153,19 +153,8 @@ export function ChatInput({
           </svg>
           
           <span className="flex-1 opacity-80 font-normal">
-            {error}
+            An error occurred
           </span>
-          
-          {onClearError && (
-            <button 
-              onClick={onClearError}
-              className="flex-shrink-0 hover:opacity-70 transition-opacity"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M9 3L3 9M3 3L9 9" stroke="#FD5353" strokeWidth="1.2" strokeLinecap="round"/>
-              </svg>
-            </button>
-          )}
         </div>
       )}
 
@@ -216,111 +205,43 @@ export function ChatInput({
             </button>
 
             {showModelDropdown && modelsToShow.length > 0 && (
-              <div 
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: '0',
-                  marginBottom: '8px',
-                  minWidth: '200px',
-                  zIndex: 99999,
-                  backgroundColor: '#222531',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderRadius: '12px',
-                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-                  overflow: 'hidden',
-                  // Force opaque background by removing all possible transparencies
-                  backgroundImage: 'none',
-                  backgroundAttachment: 'initial',
-                  backgroundOrigin: 'initial',
-                  backgroundClip: 'initial',
-                  backgroundSize: 'initial',
-                  backgroundPosition: 'initial',
-                  backgroundRepeat: 'initial',
-                  backdropFilter: 'none',
-                  opacity: '1'
-                }}
-              >
+              <div className="figma-dropdown-menu absolute bottom-full left-0 mb-2 min-w-[200px] z-[99999]">
                 {loadingModels ? (
-                  <div 
-                    style={{ 
-                      padding: '12px 16px',
-                      fontFamily: "Space Grotesk",
-                      fontSize: '14px',
-                      color: 'rgba(255, 255, 255, 0.6)',
-                      backgroundColor: '#222531'
-                    }}
-                  >
+                  <div className="p-3 text-sm text-white/60" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
                     Loading models...
                   </div>
                 ) : (
                   <>
-                    <div 
-                      style={{
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
-                        padding: '8px 16px',
-                        display: 'flex',
-                        alignItems: 'stretch',
-                        justifyContent: 'stretch',
-                        backgroundColor: '#222531'
-                      }}
-                    >
-                      <span 
-                        style={{
-                          fontFamily: 'Space Grotesk',
-                          fontSize: '14px',
-                          fontWeight: '700',
-                          lineHeight: '1.276',
-                          color: '#FFFFFF',
-                          textAlign: 'left',
-                          flex: '1'
-                        }}
-                      >
+                    <div className="figma-dropdown-header">
+                      <span className="figma-dropdown-header-text">
                         Select Model
                       </span>
                     </div>
                     
-                    <div 
-                      style={{
-                        padding: '12px 4px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        backgroundColor: '#222531'
-                      }}
-                    >
+                    <div className="figma-dropdown-content">
                       {modelsToShow.map((model) => (
                         <button
                           key={model.id}
                           onClick={() => {
-                            onModelChange?.({ 
+                            const selectedModel = { 
                               id: model.id, 
                               name: model.name, 
                               provider: getCurrentModelConfig()?.provider || 'anthropic' 
-                            });
+                            };
+                            
+                            // Save to localStorage for persistence
+                            const currentConfig = getCurrentModelConfig();
+                            if (currentConfig) {
+                              saveAIModelConfig({
+                                ...currentConfig,
+                                model: model.id
+                              });
+                            }
+                            
+                            onModelChange?.(selectedModel);
                             setShowModelDropdown(false);
                           }}
-                          style={{
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '4px 12px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            border: 'none',
-                            background: 'transparent',
-                            fontFamily: 'Space Grotesk',
-                            fontSize: '14px',
-                            fontWeight: '400',
-                            lineHeight: '1.276',
-                            color: 'rgba(255, 255, 255, 0.8)',
-                            transition: 'background-color 0.2s ease'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                          }}
+                          className="figma-dropdown-item"
                         >
                           {model.name}
                         </button>

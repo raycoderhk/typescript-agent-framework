@@ -311,4 +311,134 @@ export function updateMCPConfigStatus(serverId: string, updates: Partial<Pick<MC
   } catch (error) {
     console.error('Failed to update MCP config status:', error);
   }
+}
+
+// Helper functions for MCP server state management
+export function getMCPServerState(serverId: string, runningServerIds: Set<string>): {
+  installationState: 'not-installed' | 'installed-disabled' | 'installed-enabled';
+  hasConfiguration: boolean;
+  isConfigured: boolean;
+  isRunning: boolean;
+} {
+  const config = loadMCPConfig(serverId);
+  const isRunning = runningServerIds.has(serverId);
+  const hasConfiguration = config !== null;
+  const isConfigured = config?.isConfigured || false;
+  
+  let installationState: 'not-installed' | 'installed-disabled' | 'installed-enabled';
+  
+  if (!hasConfiguration) {
+    installationState = 'not-installed';
+  } else if (isRunning) {
+    installationState = 'installed-enabled';
+  } else {
+    installationState = 'installed-disabled';
+  }
+  
+  return {
+    installationState,
+    hasConfiguration,
+    isConfigured,
+    isRunning
+  };
+}
+
+export function isServerEnabled(serverId: string, runningServerIds: Set<string>): boolean {
+  const state = getMCPServerState(serverId, runningServerIds);
+  return state.installationState === 'installed-enabled';
+}
+
+export function isServerInstalled(serverId: string): boolean {
+  const config = loadMCPConfig(serverId);
+  return config !== null && config.isConfigured;
+}
+
+export function canServerBeEnabled(serverId: string): boolean {
+  const config = loadMCPConfig(serverId);
+  return config !== null && config.isConfigured;
+}
+
+// Server health check
+const LOCAL_SERVER_HEALTH_URL = 'http://localhost:11990/health';
+
+export interface ServerHealthResponse {
+  status: string;
+  message: string;
+  timestamp: string;
+  uptime: number;
+  proxyId: string;
+  mcpProxyConnected: boolean;
+  activeServers: number;
+}
+
+export interface ProxyIdValidationResult {
+  isValid: boolean;
+  frontendProxyId: string;
+  serverProxyId?: string;
+  serverConnected: boolean;
+  error?: string;
+}
+
+export async function checkServerHealth(): Promise<ServerHealthResponse | null> {
+  try {
+    const response = await fetch(LOCAL_SERVER_HEALTH_URL, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
+    }
+    
+    const healthData = await response.json() as ServerHealthResponse;
+    return healthData;
+  } catch (error) {
+    console.error('Failed to check server health:', error);
+    return null;
+  }
+}
+
+export async function validateProxyId(): Promise<ProxyIdValidationResult> {
+  const frontendProxyId = getOrCreateProxyId();
+  
+  try {
+    const healthData = await checkServerHealth();
+    
+    if (!healthData) {
+      return {
+        isValid: false,
+        frontendProxyId,
+        serverConnected: false,
+        error: 'Cannot connect to local server'
+      };
+    }
+    
+    const serverProxyId = healthData.proxyId;
+    const isValid = frontendProxyId === serverProxyId;
+    
+    return {
+      isValid,
+      frontendProxyId,
+      serverProxyId,
+      serverConnected: healthData.mcpProxyConnected,
+      error: isValid ? undefined : 'ProxyId mismatch between frontend and server'
+    };
+  } catch (error) {
+    return {
+      isValid: false,
+      frontendProxyId,
+      serverConnected: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+export function generateDockerCommand(proxyId: string): string {
+  return `docker run -d --name mcp-server \\
+  -p 11990:11990 \\
+  -v $(pwd)/data:/app/data \\
+  your-mcp-server-image \\
+  --proxy-id ${proxyId}`;
 } 

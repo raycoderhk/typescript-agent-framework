@@ -74,18 +74,26 @@ export class SSETransport implements Transport {
    */
   async handlePostMessage(request: Request): Promise<Response> {
     try {
+      console.log('SSE Transport: Received POST message request');
+      
       // request.json() will throw an error if the content is not valid JSON
       // or if the Content-Type is not application/json
       const message = await request.json<JSONRPCMessage>();
+      
+      console.log('SSE Transport: Parsed message:', JSON.stringify(message, null, 2));
       
       // Validate that it's a JSONRPCMessage (could add more validation here)
       if (!message || typeof message !== 'object') {
         throw new Error(`Invalid JSONRPCMessage format: ${request.text()}`);
       }
       
+      console.log('SSE Transport: Calling onmessage handler');
       this.onmessage?.(message);
+      console.log('SSE Transport: onmessage handler completed');
+      
       return new Response("Accepted", { status: 202 });
     } catch (error) {
+      console.error('SSE Transport: Error handling POST message:', error);
       this.onerror?.(error as Error);
       return new Response(`Invalid message: ${error}`, { status: 400 });
     }

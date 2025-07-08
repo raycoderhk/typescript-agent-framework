@@ -655,7 +655,7 @@ async function connectToMcpProxy() {
 
       setupMcpServerHandlers(mcpServer);
 
-      transport = new WebSocketTransport(ws as any, "fake-id");
+      transport = new WebSocketTransport(ws as any, PROXY_ID!);
       
       console.log('🔍 Connecting MCP server to transport...')
       mcpServer.connect(transport);

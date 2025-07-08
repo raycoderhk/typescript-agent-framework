@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { ChatConfiguration } from "./chat-configuration";
 import { ChatMessage } from "./chat-message";
@@ -12,9 +12,14 @@ import {
   loadAIModelConfig, 
   AIModelConfig,
   saveChat,
-  loadChat
+  loadChat,
+  getOrCreateProxyId,
+  validateProxyId,
+  ProxyIdValidationResult,
+  generateDockerCommand
 } from "@/lib/storage";
 import { MessageSquare, Settings2 } from "lucide-react";
+import { DockerInstallModal } from "@/components/docker-install-modal";
 
 interface ModelConfig {
   provider: 'openai' | 'anthropic';
@@ -68,6 +73,7 @@ interface EnhancedChatContainerProps {
   onModelConfigChange?: (config: ModelConfig | null) => void;
   enableSessionManagement?: boolean; // New prop to enable session features
   sessionId?: string; // For existing sessions
+  enabledMCPServerCount?: number; // Number of enabled MCP servers
 }
 
 // Extract session ID from URL path
@@ -97,7 +103,8 @@ export function EnhancedChatContainer({
   userAvatar = "/images/default-avatar.png",
   onModelConfigChange,
   enableSessionManagement = false,
-  sessionId: propSessionId
+  sessionId: propSessionId,
+  enabledMCPServerCount = 0
 }: EnhancedChatContainerProps) {
   const pathname = usePathname();
   const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
@@ -116,6 +123,83 @@ export function EnhancedChatContainer({
   const [displaySessionId, setDisplaySessionId] = useState<string | null>(
     enableSessionManagement && !isNewChat(sessionId) ? sessionId : null
   );
+
+  // Get proxyId for MCP connection
+  const [proxyId, setProxyId] = useState<string | null>(null);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<ProxyIdValidationResult | null>(null);
+  const [showDockerModal, setShowDockerModal] = useState(false);
+  
+  // Ref for auto-scrolling messages container
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Auto-scroll to bottom function
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end'
+      });
+    }
+  };
+  
+    useEffect(() => {
+    // Get or create proxyId from localStorage
+    const currentProxyId = getOrCreateProxyId();
+    setProxyId(currentProxyId);
+    
+    // Generate a new session ID for this chat session
+    const newChatSessionId = crypto.randomUUID();
+    setChatSessionId(newChatSessionId);
+    
+    console.log('Using proxyId for MCP connection:', currentProxyId);
+    console.log('Generated new chat session ID:', newChatSessionId);
+  }, []);
+
+  // Periodic health check and proxyId validation
+  useEffect(() => {
+    const performHealthCheck = async () => {
+      try {
+        const result = await validateProxyId();
+        setValidationResult(result);
+        
+        if (!result.isValid) {
+          console.warn('ProxyId validation failed:', result);
+          if (result.serverProxyId && result.frontendProxyId !== result.serverProxyId) {
+            console.error('ProxyId mismatch detected:', {
+              frontend: result.frontendProxyId,
+              server: result.serverProxyId
+            });
+            // Show Docker modal with correct command
+            setShowDockerModal(true);
+          }
+        } else {
+          console.log('ProxyId validation successful');
+        }
+      } catch (error) {
+        console.error('Health check failed:', error);
+      }
+    };
+
+    // Perform initial check
+    performHealthCheck();
+
+    // Set up periodic checking every 5 seconds
+    const healthCheckInterval = setInterval(performHealthCheck, 5000);
+
+    return () => clearInterval(healthCheckInterval);
+  }, []);
+
+  const handleDockerModalClose = () => {
+    setShowDockerModal(false);
+  };
+
+  const handleInstallationComplete = () => {
+    setShowDockerModal(false);
+    // Trigger immediate health check
+    validateProxyId().then(setValidationResult);
+  };
 
   // Chat hook - only initialize if we have a valid model config
   const {
@@ -138,6 +222,9 @@ export function EnhancedChatContainer({
       model: selectedModel.id,
       temperature: modelConfig.temperature || 0.7,
       maxTokens: modelConfig.maxTokens || 2000,
+      mcpProxyId: proxyId, // Pass proxyId to chat API for Durable Object routing
+      mcpSessionId: chatSessionId, // Pass unique session ID for SSE transport
+      enableMCPTools: enabledMCPServerCount > 0 && validationResult?.isValid && validationResult?.serverConnected, // Only enable tools if servers are active and connection is valid
     } : {} as Record<string, unknown>,
     onError: (error) => {
       console.error('Chat error:', error);
@@ -160,6 +247,48 @@ export function EnhancedChatContainer({
       } catch {
         // Not a structured error, continue with generic handling
       }
+      
+      // Handle MCP-specific errors
+      if (error.message.includes('MCP') || error.message.includes('400') || error.message.includes('Bad Request')) {
+        const mcpErrorMessage: Message = {
+          id: `mcp-error-${Date.now()}`,
+          content: 'Unable to connect to tools. The message was processed but tools may not be available. Please try again.',
+          timestamp: new Date(),
+          sender: "error",
+          error: {
+            error: 'MCP Connection Error',
+            userMessage: 'Unable to connect to tools. The message was processed but tools may not be available.',
+            errorType: 'MCP_CONNECTION_ERROR',
+            details: error.message,
+            suggestions: [
+              'Try sending your message again',
+              'Check if the tools are running properly',
+              'Contact support if the issue persists'
+            ]
+          }
+        };
+        setErrorMessage(mcpErrorMessage);
+        return;
+      }
+      
+      // Generic error handling
+      const genericErrorMessage: Message = {
+        id: `generic-error-${Date.now()}`,
+        content: 'An error occurred while processing your message. Please try again.',
+        timestamp: new Date(),
+        sender: "error",
+        error: {
+          error: 'Chat Error',
+          userMessage: 'An error occurred while processing your message.',
+          errorType: 'CHAT_ERROR',
+          details: error.message,
+          suggestions: [
+            'Try sending your message again',
+            'Refresh the page if the issue persists'
+          ]
+        }
+      };
+      setErrorMessage(genericErrorMessage);
     },
   });
 
@@ -339,6 +468,18 @@ export function EnhancedChatContainer({
     return result;
   }, [messagesWithThinking, enableSessionManagement]);
 
+  // Auto-scroll when messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [messagesWithThinking]);
+  
+  // Auto-scroll when streaming
+  useEffect(() => {
+    if (status === 'streaming') {
+      scrollToBottom();
+    }
+  }, [status]);
+
   // Handle message send from chat input
   const handleSendMessage = (message: string) => {
     if (!message.trim() || !modelConfig) return;
@@ -426,12 +567,13 @@ export function EnhancedChatContainer({
       )}
 
       {/* Chat Area with proper Figma spacing */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Messages - Matches Figma padding (24px sides) and spacing (32px between groups) */}
         <div 
+          ref={messagesContainerRef}
           className="flex-1 overflow-y-auto"
           style={{
-            padding: "24px 24px"
+            padding: "24px 24px 0 24px"
           }}
         >
           <div className="space-y-8">
@@ -465,13 +607,17 @@ export function EnhancedChatContainer({
           </div>
           {/* Bottom spacing for scroll */}
           <div className="h-6" />
+          {/* Scroll anchor element */}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area - Centered with proper spacing */}
+        {/* Input Area - Fixed at bottom with proper spacing */}
         <div 
-          className="flex justify-center"
+          className="flex-shrink-0 flex justify-center border-t"
           style={{
-            padding: "0 24px 24px 24px"
+            padding: "24px",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            backgroundColor: "transparent"
           }}
         >
           <ChatInput
@@ -485,10 +631,18 @@ export function EnhancedChatContainer({
               { id: "claude-3.5-sonnet", name: "Claude - 3.5 - Sonnet", provider: "Anthropic" }
             ]}
             error={currentError || error?.message}
-            onClearError={handleClearError}
           />
         </div>
       </div>
+      
+      {/* Docker Install Modal for ProxyId Mismatch */}
+      <DockerInstallModal
+        isOpen={showDockerModal}
+        onClose={handleDockerModalClose}
+        onInstallationComplete={handleInstallationComplete}
+        proxyId={validationResult?.frontendProxyId}
+        reason={validationResult?.serverProxyId ? 'mismatch' : 'initial'}
+      />
     </div>
   );
 } 

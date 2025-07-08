@@ -66,9 +66,19 @@ export function PlaygroundHeader({
 
         {/* Text content */}
         <div className="flex flex-col gap-3">
-          <h1 className="text-white font-bold text-2xl leading-none font-['Space_Grotesk']">
-            Playground
-          </h1>
+          {/* Title row with status indicator */}
+          <div className="flex items-center gap-3">
+            <h1 className="text-white font-bold text-2xl leading-none font-['Space_Grotesk']">
+              Playground
+            </h1>
+            {/* Show status badge next to title if toolbox is installed */}
+            {isToolboxInstalled && (
+              <LocalToolboxStatusBadge 
+                status={toolboxStatus}
+                showTooltip={true}
+              />
+            )}
+          </div>
           <p className="text-white/80 text-base leading-[1.4] font-['Space_Grotesk'] max-w-[418px]">
             Control AI providers securely with your own API keys. Full flexibility, 
             transparent costs, and powerful multi-provider chat — running right on your machine.
@@ -76,26 +86,22 @@ export function PlaygroundHeader({
         </div>
       </div>
 
-      {/* Right side - Conditional: Install button OR Status badge */}
+      {/* Right side - Install button only when not installed */}
       <div className="z-10">
-        {!isToolboxInstalled ? (
-                  <Button
-          onClick={onInstallClick}
-          variant="secondary"
-          className="h-10 px-4 gap-2 font-['Space_Grotesk'] font-bold text-base rounded-xl"
-          style={{
-            backgroundColor: 'transparent',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            color: '#FFFFFF'
-          }}
-        >
+        {!isToolboxInstalled && (
+          <Button
+            onClick={onInstallClick}
+            variant="secondary"
+            className="h-10 px-4 gap-2 font-['Space_Grotesk'] font-bold text-base rounded-xl"
+            style={{
+              backgroundColor: 'transparent',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#FFFFFF'
+            }}
+          >
             <Package className="h-4 w-4" />
             Install Local Toolbox
           </Button>
-        ) : (
-          <LocalToolboxStatusBadge 
-            status={toolboxStatus}
-          />
         )}
       </div>
     </div>

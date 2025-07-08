@@ -9,7 +9,11 @@ import {
   saveMCPDirectory, 
   loadMCPDirectory,
   updateMCPConfigStatus,
-  loadMCPConfig
+  loadMCPConfig,
+  getMCPServerState,
+  isServerEnabled as getIsServerEnabled,
+  isServerInstalled,
+  canServerBeEnabled
 } from "@/lib/storage";
 import { 
   initializeSearch, 
@@ -55,7 +59,7 @@ export function MCPServerDirectory({
     return new Set(installedMcpServers.map(server => server.uniqueName));
   }, [installedMcpServers]);
 
-  // Update server count when installed servers change
+  // Update server count when enabled servers change (only count actually running servers)
   useEffect(() => {
     onServerCountChange?.(installedServers.size);
   }, [installedServers.size, onServerCountChange]);
@@ -302,7 +306,11 @@ export function MCPServerDirectory({
   };
 
   const isServerEnabled = (server: MCPServer): boolean => {
-    return installedServers.has(server.id);
+    return getIsServerEnabled(server.id, installedServers);
+  };
+
+  const getServerState = (server: MCPServer) => {
+    return getMCPServerState(server.id, installedServers);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -429,17 +437,22 @@ export function MCPServerDirectory({
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredServers.map((server) => (
-              <MCPServerItem
-                key={server.id}
-                server={server}
-                isEnabled={isServerEnabled(server)}
-                isLoading={isServerLoading(server.id)}
-                onInstall={handleServerInstall}
-                onConfigure={handleServerConfigure}
-                onToggle={handleServerToggle}
-              />
-            ))}
+            {filteredServers.map((server) => {
+              const serverState = getServerState(server);
+              return (
+                <MCPServerItem
+                  key={server.id}
+                  server={server}
+                  isEnabled={serverState.installationState === 'installed-enabled'}
+                  isInstalled={serverState.hasConfiguration && serverState.isConfigured}
+                  isLoading={isServerLoading(server.id)}
+                  serverState={serverState}
+                  onInstall={handleServerInstall}
+                  onConfigure={handleServerConfigure}
+                  onToggle={handleServerToggle}
+                />
+              );
+            })}
           </div>
         )}
       </div>

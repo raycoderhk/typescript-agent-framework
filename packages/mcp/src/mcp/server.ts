@@ -61,7 +61,15 @@ export abstract class McpServerDO extends DurableObject {
     }
 
     const { readable, writable } = new TransformStream();
-    const transport = new SSETransport(writable.getWriter(), sessionId, new URL(SSE_MESSAGE_ENDPOINT, request.url).toString());
+    
+    // Create message endpoint URL that preserves both proxyId and sessionId
+    const messageEndpointUrl = new URL(SSE_MESSAGE_ENDPOINT, request.url);
+    // Copy all search parameters from the original request to preserve proxyId
+    url.searchParams.forEach((value, key) => {
+      messageEndpointUrl.searchParams.set(key, value);
+    });
+    
+    const transport = new SSETransport(writable.getWriter(), sessionId, messageEndpointUrl.toString());
     this.sessions.set(sessionId, transport);
     this.server.connect(transport);
 
