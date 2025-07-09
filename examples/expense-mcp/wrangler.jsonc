@@ -1,0 +1,14 @@
+{
+  "name": "expense-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "workflows": [
+    {
+      "name": "expense-approval",
+      "binding": "EXPENSE_WORKFLOW",
+      "class_name": "ExpenseApprovalWorkflow"
+    }
+  ],
+  "observability": { "enabled": true }
+} 
