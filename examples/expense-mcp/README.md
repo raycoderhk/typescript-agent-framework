@@ -62,6 +62,33 @@ Found 3 expenses: [
 ]
 ```
 
+## Testing
+
+### Known Issues with MCP SDK Testing
+
+The `expense-mcp-client.test.ts` file encounters compatibility issues with the MCP SDK's `ajv` dependency in the Cloudflare Workers test environment. The error manifests as:
+
+```
+SyntaxError: Unexpected token ':' in ajv/lib/definition_schema.js
+```
+
+This occurs because Vitest with Miniflare cannot properly handle the CommonJS to ES modules conversion for the `ajv` library used by the MCP SDK for JSON schema validation.
+
+### Workaround Solution
+
+As a makeshift workaround, we've created `simple-unit.test.ts` that tests the core `ExpenseRepository` business logic directly without using the MCP SDK. This approach:
+
+- Bypasses the `ajv` compatibility issues
+- Tests the essential CRUD operations (create, list, get, updateStatus) 
+- Provides meaningful unit test coverage for the repository layer
+- Runs successfully with all 8 tests passing
+
+To run the working tests:
+
+```bash
+yarn test simple-unit.test.ts
+```
+
 ## Notes
 
 - This example uses an in-memory store for simplicity. In production, use D1 or KV for persistence.
