@@ -1,6 +1,6 @@
 # Expense Tracker MCP Example
 
-This example demonstrates how to use Cloudflare Workflows via an MCP Server to track and approve expenses.
+This example demonstrates how to use Cloudflare Workflows via an MCP Server to track and approve expenses, following the MCP server standard.
 
 ## Features
 
@@ -17,43 +17,53 @@ yarn dev
 # or: npx wrangler dev
 ```
 
-## API Endpoints (PowerShell Examples)
+## Using the MCP Inspector
 
-### Submit an Expense
+1. Start your Worker as above.
+2. In a new terminal, run:
+   ```sh
+   npx @modelcontextprotocol/inspector
+   ```
+3. Open the Inspector at http://localhost:6274 (use the session token if prompted).
+4. Set the transport to Streamable HTTP and enter your Worker URL: http://127.0.0.1:8787
+5. You will see the following MCP tools:
+   - `submitExpense`: Submit a new expense (input: user, amount, description)
+   - `approveExpense`: Approve an expense (input: expenseId)
+   - `rejectExpense`: Reject an expense (input: expenseId)
+   - `listExpenses`: List all expenses (no input)
 
-```powershell
-Invoke-WebRequest -Uri http://localhost:8787/mcp/expense/submit `
-  -Method POST `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body '{ "user": "alice", "amount": 42.5, "description": "Lunch with client" }'
-```
+### Example Output
 
-### Approve an Expense
+When you run `listExpenses`, you might see output like this:
 
-```powershell
-Invoke-WebRequest -Uri http://localhost:8787/mcp/expense/approve `
-  -Method POST `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body '{ "expenseId": "<id from submit response>" }'
-```
-
-### Reject an Expense
-
-```powershell
-Invoke-WebRequest -Uri http://localhost:8787/mcp/expense/reject `
-  -Method POST `
-  -Headers @{ "Content-Type" = "application/json" } `
-  -Body '{ "expenseId": "<id from submit response>" }'
-```
-
-### List Expenses
-
-```powershell
-Invoke-WebRequest -Uri http://localhost:8787/mcp/expense/list
+```json
+Found 3 expenses: [
+  {
+    "id": "3fee1c6e-1317-48b3-a5d4-7c22bfb5e7bb",
+    "user": "ray",
+    "amount": 3000,
+    "description": "air ticket to Singapore",
+    "status": "approved"
+  },
+  {
+    "id": "3f60bc20-4afc-404c-b821-8448d5324bea",
+    "user": "ray",
+    "amount": 200,
+    "description": "dinner",
+    "status": "rejected"
+  },
+  {
+    "id": "fee8bf1e-cc0b-40cd-be95-8a8eaabf178f",
+    "user": "ray",
+    "amount": 1000,
+    "description": "hotel in singapore",
+    "status": "pending"
+  }
+]
 ```
 
 ## Notes
 
 - This example uses an in-memory store for simplicity. In production, use D1 or KV for persistence.
 - The workflow logic is in `src/workflow.ts`.
-- The MCP server is in `src/server.ts`. 
+- The MCP server and tools are in `src/server.ts` and `src/tools.ts`. 

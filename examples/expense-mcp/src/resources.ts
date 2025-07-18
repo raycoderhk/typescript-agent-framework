@@ -7,4 +7,8 @@ export const ExpenseResource = {
     description: { type: 'string' },
     status: { type: 'string', enum: ['pending', 'approved', 'rejected'] }
   }
-}; 
+};
+
+export function setupServerResources(server, repository) {
+  // No resources defined for expense-mcp yet.
+} 

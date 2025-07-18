@@ -1,47 +1,110 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ExpenseRepository } from './repository';
-import { ExpenseApprovalWorkflow } from './workflow';
+import { z } from 'zod';
 
-export const submitExpense = async (input, env) => {
-  const id = crypto.randomUUID();
-  const expense = {
-    id,
-    user: input.user,
-    amount: input.amount,
-    description: input.description,
-    status: 'pending'
-  };
-  ExpenseRepository.create(expense);
-
-  // Start workflow
-  await env.EXPENSE_WORKFLOW.create({
-    id,
-    params: {
-      expenseId: id,
-      user: input.user,
-      amount: input.amount,
-      description: input.description
+export function setupServerTools(server: McpServer, repository: ExpenseRepository) {
+  (server.tool as any)(
+    'submitExpense',
+    'Submit a new expense',
+    {
+      user: z.string().describe('The user submitting the expense'),
+      amount: z.number().describe('The expense amount'),
+      description: z.string().describe('Description of the expense'),
+    },
+    async (args: { user: string; amount: number; description: string }) => {
+      const { user, amount, description } = args;
+      const id = crypto.randomUUID();
+      const expense = { id, user, amount, description, status: 'pending' as const };
+      repository.create(expense);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Expense submitted successfully with ID: ${id}`
+          }
+        ]
+      };
     }
-  });
+  );
 
-  return expense;
-};
+  (server.tool as any)(
+    'approveExpense',
+    'Approve an expense',
+    {
+      id: z.string().describe('The expense ID to approve'),
+    },
+    async (args: { id: string }) => {
+      const { id } = args;
+      const expense = repository.get(id);
+      if (!expense) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Expense with ID ${id} not found`
+            }
+          ]
+        };
+      }
+      
+      repository.updateStatus(id, 'approved');
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Expense ${id} approved successfully`
+          }
+        ]
+      };
+    }
+  );
 
-export const approveExpense = async (input, env) => {
-  // Send approval event to workflow
-  const instance = await env.EXPENSE_WORKFLOW.get(input.expenseId);
-  await instance.sendEvent('approval_action', 'approve');
-  ExpenseRepository.updateStatus(input.expenseId, 'approved');
-  return ExpenseRepository.get(input.expenseId);
-};
+  (server.tool as any)(
+    'rejectExpense',
+    'Reject an expense',
+    {
+      id: z.string().describe('The expense ID to reject'),
+    },
+    async (args: { id: string }) => {
+      const { id } = args;
+      const expense = repository.get(id);
+      if (!expense) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Expense with ID ${id} not found`
+            }
+          ]
+        };
+      }
+      
+      repository.updateStatus(id, 'rejected');
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Expense ${id} rejected successfully`
+          }
+        ]
+      };
+    }
+  );
 
-export const rejectExpense = async (input, env) => {
-  // Send rejection event to workflow
-  const instance = await env.EXPENSE_WORKFLOW.get(input.expenseId);
-  await instance.sendEvent('approval_action', 'reject');
-  ExpenseRepository.updateStatus(input.expenseId, 'rejected');
-  return ExpenseRepository.get(input.expenseId);
-};
-
-export const listExpenses = async (_input, _env) => {
-  return ExpenseRepository.list();
-}; 
+  (server.tool as any)(
+    'listExpenses',
+    'List all expenses',
+    {},
+    async () => {
+      const expenses = repository.list();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Found ${expenses.length} expenses: ${JSON.stringify(expenses, null, 2)}`
+          }
+        ]
+      };
+    }
+  );
+} 

@@ -1,4 +1,4 @@
-type Expense = {
+export type Expense = {
   id: string;
   user: string;
   amount: number;
@@ -6,25 +6,37 @@ type Expense = {
   status: 'pending' | 'approved' | 'rejected';
 };
 
-const expenses = new Map<string, Expense>();
+export class ExpenseRepository {
+  private expenses: Map<string, Expense> = new Map();
+  private ctx: DurableObjectState; // Add this
 
-export const ExpenseRepository = {
+  constructor(ctx: DurableObjectState) { // Add parameter
+    this.ctx = ctx;
+  }
+
   create(expense: Expense) {
-    expenses.set(expense.id, expense);
+    this.expenses.set(expense.id, expense);
     return expense;
-  },
+  }
+
   updateStatus(id: string, status: 'pending' | 'approved' | 'rejected') {
-    const expense = expenses.get(id);
+    const expense = this.expenses.get(id);
     if (expense) {
       expense.status = status;
-      expenses.set(id, expense);
+      this.expenses.set(id, expense);
     }
     return expense;
-  },
-  get(id: string) {
-    return expenses.get(id);
-  },
-  list() {
-    return Array.from(expenses.values());
   }
-}; 
+
+  get(id: string) {
+    return this.expenses.get(id);
+  }
+
+  list() {
+    return Array.from(this.expenses.values());
+  }
+
+  initializeDatabase() {
+    // No-op for in-memory, but matches the MCP pattern
+  }
+} 

@@ -3,11 +3,18 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-02-11",
   "compatibility_flags": ["nodejs_compat"],
-  "workflows": [
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "EXPENSE_MCP_SERVER",
+        "class_name": "ExpenseMcpServer"
+      }
+    ]
+  },
+  "migrations": [
     {
-      "name": "expense-approval",
-      "binding": "EXPENSE_WORKFLOW",
-      "class_name": "ExpenseApprovalWorkflow"
+      "tag": "v1",
+      "new_classes": ["ExpenseMcpServer"]
     }
   ],
   "observability": { "enabled": true }
