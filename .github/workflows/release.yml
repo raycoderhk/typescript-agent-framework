@@ -11,7 +11,7 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     # Only run this job if it's in the original repository, not in forks
-    if: github.repository == 'xava-labs/typescript-agent-framework'
+    if: github.repository == 'xava-labs/typescript-agent-vibework'
     permissions:
       contents: write
       packages: write
