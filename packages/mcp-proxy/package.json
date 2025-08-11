@@ -1,6 +1,6 @@
 {
   "name": "mcp-proxy-example",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP Server Proxy Example",
   "main": "src/index.ts",
   "scripts": {

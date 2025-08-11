@@ -1,5 +1,13 @@
 # playground
 
+## 0.2.2
+
+### Patch Changes
+
+- 89571a8: playground introduction
+- Updated dependencies [89571a8]
+  - @xava-labs/mcp@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
