@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mcp-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-02-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MCP_SERVER_PROXY",
+        "class_name": "McpServerProxyDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_classes": ["McpServerProxyDO"]
+    }
+  ]
+} 

@@ -1,0 +1,39 @@
+{
+  "name": "@xava-labs/mcp-toolbox",
+  "version": "1.0.0",
+  "description": "Hono websocket server with SQLite integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "prebuild": "cd ../mcp && pnpm run build",
+    "build": "tsc",
+    "build:bundle": "esbuild dist/index.js --bundle --platform=node --target=node18 --outfile=dist/bundle.js --external:ws",
+    "start": "node dist/index.js",
+    "start:bundle": "node dist/bundle.js",
+    "send": "tsx send-message.ts",
+    "test": "echo 'Tests temporarily excluded'",
+    "proxy:test": "tsx src/test-figma-mcp.ts",
+    "worker:deploy": "wrangler deploy",
+    "worker:dev": "wrangler dev --tsconfig tsconfig.worker.json",
+    "codegen": "wrangler types"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.12.0",
+    "hono": "^4.8.2",
+    "sql.js": "^1.13.0",
+    "ws": "^8.18.0",
+    "zod": "^3.22.4",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "@xava-labs/mcp": "file:../mcp"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "@types/ws": "^8.5.12",
+    "@types/sql.js": "^1.4.9",
+    "esbuild": "^0.25.6",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.3",
+    "vitest": "^2.0.5",
+    "@vitest/ui": "^2.0.5"
+  }
+}

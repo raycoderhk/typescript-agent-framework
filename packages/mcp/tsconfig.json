@@ -14,7 +14,7 @@
 		/* Specify how TypeScript looks up a file from a given module specifier. */
 		"moduleResolution": "Bundler",
 		/* Specify type package names to be included without being referenced in a source file. */
-		"types": ["@cloudflare/workers-types"],
+		"types": [],
 		/* Enable importing .json files */
 		"resolveJsonModule": true,
 
@@ -46,5 +46,5 @@
 		"skipLibCheck": true
 	},
 	"exclude": ["test", "dist"],
-	"include": ["worker-configuration.d.ts", "src/**/*.ts", "test/index.ts"]
+	"include": ["env.d.ts", "src/**/*.ts", "test/index.ts", "../mcp-proxy/src/mcp-server-proxy.ts", "../mcp-proxy/src/server-proxy.ts"]
 }

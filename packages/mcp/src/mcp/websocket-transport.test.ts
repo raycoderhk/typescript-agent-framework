@@ -18,7 +18,7 @@ describe('WebSocketTransport', () => {
     };
     
     // Create transport with mock WebSocket
-    transport = new WebSocketTransport(mockWebSocket as unknown as WebSocket, testSessionId);
+    transport = new WebSocketTransport(mockWebSocket, testSessionId);
   });
 
   describe('constructor', () => {

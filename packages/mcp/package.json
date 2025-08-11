@@ -15,12 +15,15 @@
 	},
 	"scripts": {
 		"build": "tsc",
-		"prepublishOnly": "yarn run build",
+		"prepare": "npm run build",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
 		"test": "vitest run",
-		"cf-typegen": "wrangler types --include-runtime=false"
+		"lint": "echo 'No ESLint configured for this package'",
+		"lint:fix": "echo 'No ESLint configured for this package'",
+		"type-check": "tsc --noEmit",
+		"codegen": "wrangler types -c wrangler.jsonc --env-interface Env env.d.ts"
 	},
 	"keywords": [
 		"mcp",
@@ -42,8 +45,7 @@
 	},
 	"homepage": "https://xavalabs.com",
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.15",
-		"@cloudflare/workers-types": "^4.20250410.0",
+		"@cloudflare/vitest-pool-workers": "^0.8.43",
 		"@semantic-release/git": "^10.0.1",
 		"semantic-release": "^23.0.0",
 		"typescript": "^5.8.3",
@@ -51,7 +53,7 @@
 		"wrangler": "^4.9.1"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.9.0",
+		"@modelcontextprotocol/sdk": "^1.17.2",
 		"hono": "^4.7.6"
 	}
 }

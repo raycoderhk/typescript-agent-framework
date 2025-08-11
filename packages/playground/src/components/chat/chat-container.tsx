@@ -1,19 +1,64 @@
-import React, { useEffect, useState } from "react";
-import { cn } from "@/lib/utils";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import Image from "next/image";
+import { cn } from "../../lib/exports/utils";
+import { ChatConfiguration } from "./chat-configuration";
 import { ChatMessage } from "./chat-message";
-import { ChatHeader } from "./chat-header";
+import { ChatInput } from "./chat-input";
 import { DateDivider } from "./date-divider";
+import { ChatSettingsModal } from "./chat-settings-modal";
+import { NewChatConfirmationModal } from "./new-chat-confirmation-modal";
+import { ProxyMismatchPopup } from "../ui/proxy-mismatch-popup";
 import { useChat, type Message as UIMessage } from "@ai-sdk/react";
-import { usePathname } from "next/navigation";
-import { saveChat, loadChat } from "@/lib/chat-storage";
+import { usePathname, useRouter } from "next/navigation";
+import { 
+  saveAIModelConfig, 
+  loadAIModelConfig, 
+  AIModelConfig,
+  saveChat,
+  loadChat,
+  getOrCreateProxyId,
+  validateProxyId,
+  ProxyIdValidationResult
+} from "../../lib/exports/storage";
+import { getAllAvailableModels, type AIModel } from "../../lib/exports/storage";
+import { MessageSquare, Settings2 } from "lucide-react";
+import { DockerInstallModal } from "../docker-install-modal";
 
-export interface Message {
+interface ModelConfig {
+  provider: 'openai' | 'anthropic';
+  apiKey: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxSteps?: number;
+  systemPrompt?: string;
+}
+
+interface ModelOption {
+  id: string;
+  name: string;
+  provider: string;
+}
+
+interface Message {
   id: string;
   content: string;
   timestamp: string | Date;
-  sender: "user" | "agent";
+  sender: "user" | "agent" | "error";
   isThinking?: boolean;
-  isStreaming?: boolean;
+  showTaskList?: boolean;
+  taskSteps?: Array<{
+    id: string;
+    title: string;
+    status: "pending" | "in-progress" | "completed";
+  }>;
+  error?: {
+    error: string;
+    userMessage: string;
+    errorType: string;
+    details?: string;
+    suggestions?: string[];
+  };
 }
 
 interface DateDividerItem {
@@ -22,13 +67,15 @@ interface DateDividerItem {
   date: Date;
 }
 
-export interface ChatContainerProps {
+interface ChatContainerProps {
   className?: string;
   title?: string;
-  onEdit?: () => void;
   showHeader?: boolean;
-  apiUrl?: string;
-  initialThinking?: boolean;
+  userAvatar?: string;
+  onModelConfigChange?: (config: ModelConfig | null) => void;
+  enableSessionManagement?: boolean; // New prop to enable session features
+  sessionId?: string; // For existing sessions
+  enabledMCPServerCount?: number; // Number of enabled MCP servers
 }
 
 // Extract session ID from URL path
@@ -51,54 +98,336 @@ function isDifferentDay(date1: Date, date2: Date): boolean {
   );
 }
 
-export function ChatContainer({ 
-  className, 
-  title,
-  onEdit,
+export function ChatContainer({
+  className,
+  title = "Playground Chat",
   showHeader = true,
-  apiUrl = "http://localhost:8787/agent/chat",
+  userAvatar = "/images/default-avatar.png",
+  onModelConfigChange,
+  enableSessionManagement = false,
+  sessionId: propSessionId,
+  enabledMCPServerCount = 0
 }: ChatContainerProps) {
   const pathname = usePathname();
-  const [inputValue, setInputValue] = useState("");
-  
-  // Session management
-  const urlSessionId = getSessionIdFromPath(pathname || "");
+  const router = useRouter();
+  const [modelConfig, setModelConfig] = useState<ModelConfig | null>(null);
+  const [currentError, setCurrentError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<Message | null>(null);
+  const [selectedModel, setSelectedModel] = useState<ModelOption>({
+    id: "claude-3-5-sonnet-20241022",
+    name: "Claude 3.5 Sonnet",
+    provider: "Anthropic"
+  });
+  const [availableModels, setAvailableModels] = useState<AIModel[]>([]);
+
+  // Session management (only if enabled)
+  const urlSessionId = enableSessionManagement ? (propSessionId || getSessionIdFromPath(pathname || "")) : null;
   const [sessionId, setSessionId] = useState<string | null>(urlSessionId);
   const [displaySessionId, setDisplaySessionId] = useState<string | null>(
-    isNewChat(sessionId) ? null : sessionId
+    enableSessionManagement && !isNewChat(sessionId) ? sessionId : null
   );
+
+  // Get proxyId for MCP connection
+  const [proxyId, setProxyId] = useState<string | null>(null);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<ProxyIdValidationResult | null>(null);
+  const [showDockerModal, setShowDockerModal] = useState(false);
+  const [showProxyMismatchPopup, setShowProxyMismatchPopup] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
   
-  const [isThinking, setIsThinking] = useState(false);
+  // Ref for auto-scrolling messages container
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   
-  // AI SDK chat hook
+  // Auto-scroll to bottom function
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end'
+      });
+    }
+  };
+  
+    useEffect(() => {
+    // Get or create proxyId from localStorage
+    const currentProxyId = getOrCreateProxyId();
+    setProxyId(currentProxyId);
+    
+    // Generate a new session ID for this chat session
+    const newChatSessionId = crypto.randomUUID();
+    setChatSessionId(newChatSessionId);
+    
+    console.log('Using proxyId for MCP connection:', currentProxyId);
+    console.log('Generated new chat session ID:', newChatSessionId);
+  }, []);
+
+  // Periodic health check and proxyId validation
+  useEffect(() => {
+    const performHealthCheck = async () => {
+      try {
+        const result = await validateProxyId();
+        setValidationResult(result);
+        
+        if (!result.isValid) {
+          console.warn('ProxyId validation failed:', result);
+          if (result.serverProxyId && result.frontendProxyId !== result.serverProxyId) {
+            console.error('ProxyId mismatch detected:', {
+              frontend: result.frontendProxyId,
+              server: result.serverProxyId
+            });
+            // Show dedicated proxy mismatch popup
+            setShowProxyMismatchPopup(true);
+          } else if (!result.serverConnected) {
+            // Show Docker modal for initial setup when server is not connected
+            setShowDockerModal(true);
+          }
+        } else {
+          console.log('ProxyId validation successful');
+        }
+      } catch (error) {
+        console.error('Health check failed:', error);
+      }
+    };
+
+    // Perform initial check
+    performHealthCheck();
+
+    // Set up periodic checking every 5 seconds
+    const healthCheckInterval = setInterval(performHealthCheck, 5000);
+
+    return () => clearInterval(healthCheckInterval);
+  }, []);
+
+  const handleDockerModalClose = () => {
+    setShowDockerModal(false);
+  };
+
+  const handleInstallationComplete = () => {
+    setShowDockerModal(false);
+    // Trigger immediate health check
+    validateProxyId().then(setValidationResult);
+  };
+
+  const handleProxyMismatchPopupClose = () => {
+    setShowProxyMismatchPopup(false);
+  };
+
+  const handleSettingsModalClose = () => {
+    setShowSettingsModal(false);
+  };
+
+  const handleSettingsConfigUpdate = (config: AIModelConfig) => {
+    // Update the model config when settings are changed
+    const modelConfig: ModelConfig = {
+      provider: config.provider,
+      apiKey: config.apiKey,
+      model: config.model,
+      temperature: config.temperature || 0.7,
+      maxTokens: config.maxTokens || 2000,
+      systemPrompt: config.systemPrompt
+    };
+    setModelConfig(modelConfig);
+    onModelConfigChange?.(modelConfig);
+  };
+
+  const handleNewChatClick = () => {
+    // Check if there are existing messages
+    const hasMessages = aiMessages.length > 0;
+    
+    if (hasMessages) {
+      // Show confirmation modal
+      setShowNewChatModal(true);
+    } else {
+      // No messages, directly create new chat
+      handleCreateNewChat();
+    }
+  };
+
+  const handleCreateNewChat = () => {
+    if (enableSessionManagement) {
+      // Navigate to new chat page
+      router.push('/chat/new');
+    } else {
+      // For non-session management, stop any ongoing request and clear the chat state
+      stop(); // Cancel any ongoing streaming request
+      setMessages([]);
+      setCurrentError(null);
+      setErrorMessage(null);
+      
+      // Generate a new chat session ID for MCP connections
+      const newChatSessionId = crypto.randomUUID();
+      setChatSessionId(newChatSessionId);
+      
+      console.log('Started new chat with session ID:', newChatSessionId);
+    }
+  };
+
+  const handleNewChatModalClose = () => {
+    setShowNewChatModal(false);
+  };
+
+  // Chat hook - only initialize if we have a valid model config
   const {
     messages: aiMessages,
-    handleInputChange,
-    handleSubmit,
+    append,
     status,
-    error,
+    setMessages,
+    stop,
   } = useChat({
-    api: sessionId && !isNewChat(sessionId) ? `${apiUrl}/${sessionId}` : apiUrl,
-    id: 'chat-session',
-    initialMessages: (sessionId && !isNewChat(sessionId) ? loadChat(sessionId) : []) as UIMessage[],
-    experimental_streamData: true,
-    streamProtocol: 'data',
-  } as {
-    api: string;
-    id: string;
-    initialMessages: UIMessage[];
-    experimental_streamData: boolean;
+    api: modelConfig ? '/api/chat' : undefined,
+    id: enableSessionManagement ? 'session-chat' : 'chat-session',
+    streamProtocol: 'data' as const,
+    initialMessages: (enableSessionManagement && sessionId && !isNewChat(sessionId) ? loadChat(sessionId) : []) as UIMessage[],
+    headers: modelConfig ? {
+      'Authorization': `Bearer ${modelConfig.apiKey}`,
+    } : {},
+    body: modelConfig ? {
+      provider: modelConfig.provider.toLowerCase(),
+      model: selectedModel.id,
+      temperature: modelConfig.temperature || 0.7,
+      maxTokens: modelConfig.maxTokens || 2000,
+      mcpProxyId: proxyId, // Pass proxyId to chat API for Durable Object routing
+      mcpSessionId: chatSessionId, // Pass unique session ID for SSE transport
+      enableMCPTools: enabledMCPServerCount > 0 && validationResult?.isValid && validationResult?.serverConnected, // Only enable tools if servers are active and connection is valid
+    } : {} as Record<string, unknown>,
+    onError: (error) => {
+      console.error('Chat error:', error);
+      setCurrentError(error.message);
+      
+      // Try to parse structured error response
+      try {
+        const errorData = JSON.parse(error.message);
+        if (errorData.userMessage && errorData.errorType) {
+          const errorMessage: Message = {
+            id: `error-${Date.now()}`,
+            content: errorData.userMessage,
+            timestamp: new Date(),
+            sender: "error",
+            error: errorData
+          };
+          setErrorMessage(errorMessage);
+          return;
+        }
+      } catch {
+        // Not a structured error, continue with generic handling
+      }
+      
+      // Handle MCP-specific errors
+      if (error.message.includes('MCP') || error.message.includes('400') || error.message.includes('Bad Request')) {
+        const mcpErrorMessage: Message = {
+          id: `mcp-error-${Date.now()}`,
+          content: 'Unable to connect to tools. The message was processed but tools may not be available. Please try again.',
+          timestamp: new Date(),
+          sender: "error",
+          error: {
+            error: 'MCP Connection Error',
+            userMessage: 'Unable to connect to tools. The message was processed but tools may not be available.',
+            errorType: 'MCP_CONNECTION_ERROR',
+            details: error.message,
+            suggestions: [
+              'Try sending your message again',
+              'Check if the tools are running properly',
+              'Contact support if the issue persists'
+            ]
+          }
+        };
+        setErrorMessage(mcpErrorMessage);
+        return;
+      }
+      
+      // Generic error handling
+      const genericErrorMessage: Message = {
+        id: `generic-error-${Date.now()}`,
+        content: 'An error occurred while processing your message. Please try again.',
+        timestamp: new Date(),
+        sender: "error",
+        error: {
+          error: 'Chat Error',
+          userMessage: 'An error occurred while processing your message.',
+          errorType: 'CHAT_ERROR',
+          details: error.message,
+          suggestions: [
+            'Try sending your message again',
+            'Refresh the page if the issue persists'
+          ]
+        }
+      };
+      setErrorMessage(genericErrorMessage);
+    },
   });
 
-  // Status tracking for UI state
-  useEffect(() => {
-    // Set thinking state when status is submitted
-    setIsThinking(status === 'submitted');
-    console.log("Status changed to:", status, "isThinking:", status === 'submitted');
-  }, [status]);
+  // Handle configuration completion
+  const handleConfigurationComplete = (config: { provider: string; version: string; apiKey: string }) => {
+    const modelConfig: ModelConfig = {
+      provider: config.provider.toLowerCase() as 'openai' | 'anthropic',
+      apiKey: config.apiKey,
+      model: config.version,
+      temperature: 0.7,
+      maxTokens: 2000,
+    };
+    
+    // Save to localStorage for persistence
+    const aiModelConfig: AIModelConfig = {
+      provider: modelConfig.provider,
+      apiKey: modelConfig.apiKey,
+      model: modelConfig.model,
+      temperature: modelConfig.temperature,
+      maxTokens: modelConfig.maxTokens,
+    };
+    saveAIModelConfig(aiModelConfig);
+    
+    setModelConfig(modelConfig);
+    setCurrentError(null);
+    setErrorMessage(null);
+    onModelConfigChange?.(modelConfig);
+  };
 
-  // Handle session ID generation for new chats ONLY
+  // Load existing configuration on mount
   useEffect(() => {
+    const existingConfig = loadAIModelConfig();
+    if (existingConfig && existingConfig.apiKey && existingConfig.model) {
+      const modelConfig: ModelConfig = {
+        provider: existingConfig.provider,
+        apiKey: existingConfig.apiKey,
+        model: existingConfig.model,
+        temperature: existingConfig.temperature || 0.7,
+        maxTokens: existingConfig.maxTokens || 2000,
+      };
+      setModelConfig(modelConfig);
+      onModelConfigChange?.(modelConfig);
+    }
+  }, [onModelConfigChange]);
+
+  // Load available models when app starts
+  useEffect(() => {
+    const loadAvailableModels = async () => {
+      try {
+        const models = await getAllAvailableModels();
+        setAvailableModels(models);
+        
+        // If we have models and no selected model, pick the first one
+        if (models.length > 0 && !selectedModel.id) {
+          const firstModel = models[0];
+          setSelectedModel({
+            id: firstModel.id,
+            name: firstModel.name,
+            provider: firstModel.provider
+          });
+        }
+      } catch (error) {
+        console.error('Error loading available models:', error);
+      }
+    };
+
+    loadAvailableModels();
+  }, [selectedModel.id]);
+
+  // Session management effects (only if enabled)
+  useEffect(() => {
+    if (!enableSessionManagement) return;
+    
     // Only handle new chat session creation
     if (!isNewChat(sessionId) || aiMessages.length === 0) return;
     
@@ -112,12 +441,12 @@ export function ChatContainer({
     // Update session ID state
     setSessionId(newSessionId);
     setDisplaySessionId(newSessionId);
-    
-    // Don't save here - we'll do that in the dedicated save effect
-  }, [sessionId, aiMessages.length]); // Only depend on length, not the entire messages array
+  }, [enableSessionManagement, sessionId, aiMessages.length]);
 
-  // Single place to save messages, with debounce to avoid rapid saves
+  // Save messages effect (only if session management enabled)
   useEffect(() => {
+    if (!enableSessionManagement) return;
+    
     // Don't save for new chats until they have a proper ID
     if (isNewChat(sessionId) || !sessionId) return;
     
@@ -131,64 +460,74 @@ export function ChatContainer({
     }, 500); // 500ms debounce
     
     return () => clearTimeout(saveTimeout);
-  }, [sessionId, aiMessages]);
+  }, [enableSessionManagement, sessionId, aiMessages]);
 
-  console.log("Current status:", status);
-  
-  // Check for the assistant message that's being streamed
-  const streamingMessage = aiMessages.find(msg => 
-    msg.role === 'assistant' && msg === aiMessages[aiMessages.length - 1] && status === 'streaming'
-  );
-  
-  console.log("Streaming message content:", streamingMessage?.content);
+  // Handle model selection
+  const handleModelSelect = (model: ModelOption) => {
+    setSelectedModel(model);
+  };
 
-  // Convert AI messages to our format
-  const displayMessages = React.useMemo(() => {
-    return aiMessages.map((msg) => {
-      const isLatestAssistantMessage = msg.role === "assistant" && msg === aiMessages[aiMessages.length - 1];
-      // Only show streaming if we have content and we're in streaming state
-      const isActivelyStreaming = status === 'streaming' && isLatestAssistantMessage && !!msg.content;
+  // Convert AI messages to display format
+  const displayMessages = useMemo(() => {
+    if (!modelConfig) return [];
+    
+    return aiMessages.map((msg, index) => {
+      const isThinking = status === 'submitted' && index === aiMessages.length - 1 && msg.role === 'assistant' && !msg.content;
       
+      // Sample task steps for demo (would come from actual agent logic)
+      const sampleTaskSteps = index === 1 && msg.role === 'assistant' ? [
+        { id: "1", title: "Preparing agent to Fetch Website Data", status: "completed" as const },
+        { id: "2", title: "Getting high on caffeine...", status: "completed" as const },
+        { id: "3", title: "Coming up with instructions...", status: "completed" as const }
+      ] : [];
+
       return {
         id: msg.id,
         content: msg.content || '',
         timestamp: new Date(msg.createdAt || new Date()),
         sender: msg.role === "user" ? "user" : "agent" as "user" | "agent",
-        isStreaming: isActivelyStreaming
+        isThinking,
+        showTaskList: sampleTaskSteps.length > 0,
+        taskSteps: sampleTaskSteps
       };
     });
-  }, [aiMessages, status]);
-  
-  // Add thinking indicator if needed
-  const messagesWithThinking = React.useMemo(() => {
-    // Only add thinking indicator if:
-    // 1. We're in thinking state
-    // 2. The last message is from the user (not the agent)
-    // 3. We have at least one message
-    const lastMessage = displayMessages[displayMessages.length - 1];
-    const shouldShowThinking = isThinking && 
-                              displayMessages.length > 0 && 
-                              (!lastMessage || lastMessage.sender === 'user');
+  }, [aiMessages, status, modelConfig]);
+
+  // Add thinking message and error messages if needed
+  const messagesWithThinking = useMemo(() => {
+    const messages: Message[] = [...displayMessages];
     
-    if (shouldShowThinking) {
-      console.log("Adding thinking indicator");
-      return [
-        ...displayMessages,
-        {
-          id: "thinking",
-          content: "", // Empty content to show just the dots
-          timestamp: new Date(),
-          sender: "agent" as "user" | "agent",
-          isThinking: true // This triggers the 3-dot animation in ChatMessage
-        }
-      ];
+    // Add error message if present
+    if (errorMessage) {
+      messages.push({
+        ...errorMessage,
+        timestamp: new Date(errorMessage.timestamp)
+      });
     }
     
-    return displayMessages;
-  }, [displayMessages, isThinking]);
-  
-  // Group messages by date
-  const messagesWithDates = React.useMemo(() => {
+    // Add thinking indicator if we're in submitted state and last message is from user
+    if (status === 'submitted' && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.sender === 'user') {
+        messages.push({
+          id: "thinking",
+          content: "",
+          timestamp: new Date(),
+          sender: "agent",
+          isThinking: true
+        });
+      }
+    }
+    
+    return messages;
+  }, [displayMessages, status, errorMessage]);
+
+  // Group messages by date (only if session management enabled)
+  const messagesWithDates = useMemo(() => {
+    if (!enableSessionManagement) {
+      return messagesWithThinking.map(msg => msg);
+    }
+
     const result: (Message | DateDividerItem)[] = [];
     let lastDate: Date | null = null;
     
@@ -208,133 +547,214 @@ export function ChatContainer({
     });
     
     return result;
+  }, [messagesWithThinking, enableSessionManagement]);
+
+  // Auto-scroll when messages change
+  useEffect(() => {
+    scrollToBottom();
   }, [messagesWithThinking]);
   
-  // Form submission handler
-  const handleFormSubmit = React.useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim()) return;
+  // Auto-scroll when streaming
+  useEffect(() => {
+    if (status === 'streaming') {
+      scrollToBottom();
+    }
+  }, [status]);
+
+  // Handle message send from chat input
+  const handleSendMessage = (message: string) => {
+    if (!message.trim() || !modelConfig) return;
     
-    // Set thinking state immediately for better UX
-    setIsThinking(true);
+    setCurrentError(null);
+    setErrorMessage(null);
     
-    handleSubmit(e);
-    
-    setInputValue("");
-  }, [inputValue, handleSubmit]);
-  
-  // Input change handler
-  const handleLocalInputChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setInputValue(newValue);
-    
-    handleInputChange(e);
-  }, [handleInputChange]);
-  
+    // Add user message using the chat hook's append function
+    append({ role: 'user', content: message });
+  };
+
   // Title display
   const displayTitle = title || 
-    (displaySessionId ? `Chat #${displaySessionId}` : "New Chat");
-  
+    (enableSessionManagement && displaySessionId ? `Chat #${displaySessionId}` : title);
+
+  // Show configuration if no model config
+  if (!modelConfig) {
+    return (
+      <div 
+        className={cn("flex flex-col h-full w-full relative overflow-hidden", className)}
+        style={{
+          background: "transparent"
+        }}
+      >
+        <ChatConfiguration onContinue={handleConfigurationComplete} />
+      </div>
+    );
+  }
+
+  // Main chat interface
   return (
     <div 
-      className={cn("flex flex-col h-full w-full relative rounded-lg overflow-hidden", className)} 
-      style={{ 
-        background: "#09090B",
-        border: "1px solid transparent",
-        borderImageSlice: 1,
-        borderImageSource: "linear-gradient(to bottom, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05) 50%, transparent)",
-        boxShadow: "0 0 30px rgba(0, 0, 0, 0.3)"
+      className={cn("flex flex-col h-full w-full relative overflow-hidden", className)}
+      style={{
+        background: "transparent"
       }}
     >
-      {showHeader && <ChatHeader title={displayTitle} onEdit={onEdit} />}
-      
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {messagesWithDates.map((item, index) => {
-          const isFirstItem = index === 0;
-          const standardMarginClass = isFirstItem ? "" : "mt-6";
-          
-          if ('type' in item && item.type === 'date-divider') {
-            return (
-              <div key={item.id} className={standardMarginClass}>
-                <DateDivider date={item.date} />
-              </div>
-            );
-          }
-          
-          const message = item as Message;
-          
-          return (
-            <div 
-              key={message.id} 
-              className={standardMarginClass}
-            >
-              <ChatMessage
-                content={message.content}
-                timestamp={message.timestamp}
-                variant={message.sender}
-                isThinking={message.isThinking}
-                isStreaming={message.isStreaming}
-              />
-            </div>
-          );
-        })}
-        
-        <div className="h-24"></div>
-      </div>
-      
-      {error && (
-        <div className="px-6 py-2 bg-red-500/20 text-red-400 text-xs text-center">
-          Error: {error.message || "Something went wrong"}
-        </div>
-      )}
-      
-      <div className="px-4 py-2 text-xs text-right text-gray-400">
-        Status: {status} | Thinking: {isThinking ? 'yes' : 'no'} | Latest: {
-          aiMessages.length > 0 ? 
-          (aiMessages[aiMessages.length - 1].role === 'assistant' ? 
-            aiMessages[aiMessages.length - 1].content.substring(0, 20) + '...' : 
-            '(user message)') : 
-          'none'
-        }
-      </div>
-      
-      <form onSubmit={handleFormSubmit} className="p-4 border-t border-[rgba(255,255,255,0.1)]">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={handleLocalInputChange}
-            placeholder="Type a message..."
-            disabled={status === 'submitted' || status === 'streaming'}
-            className="flex-1 px-4 py-3 rounded-full font-[var(--font-space-grotesk)] text-[rgba(255,255,255,0.8)] bg-[#17181A] border border-[rgba(255,255,255,0.1)] focus:outline-none focus:border-[rgba(255,255,255,0.2)]"
-          />
-          <button
-            type="submit"
-            disabled={!inputValue.trim() || status === 'submitted' || status === 'streaming'}
-            className="inline-flex items-center justify-center p-3 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
+      {/* Header - Matches Figma padding and spacing with full-width divider */}
+      {showHeader && (
+        <div className="border-b" style={{ borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+          <div 
+            className="flex justify-between items-center gap-6"
             style={{
-              background: "linear-gradient(92deg, rgba(114, 255, 192, 0.10) 0%, rgba(32, 132, 95, 0.10) 99.74%)",
-              border: "1px solid rgba(114, 255, 192, 0.2)",
-              backdropFilter: "blur(40px)"
+              padding: "20px 24px"
             }}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-5 w-5"
-            >
-              <path d="M22 2L11 13" />
-              <path d="M22 2l-7 20-4-9-9-4 20-7z" />
-            </svg>
-            <span className="sr-only">Send message</span>
-          </button>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+                <Image 
+                  src="/images/badge_light_bg.png" 
+                  alt="Playground Chat"
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span 
+                className="text-white font-bold"
+                style={{
+                  fontFamily: "Space Grotesk",
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  lineHeight: "1em"
+                }}
+              >
+                {displayTitle}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-6 h-6 cursor-pointer hover:bg-white/10 rounded p-1 transition-colors"
+                onClick={handleNewChatClick}
+                title="Start new chat"
+              >
+                <MessageSquare 
+                  size={24} 
+                  stroke="white" 
+                  strokeWidth={1.2}
+                />
+              </div>
+              <div 
+                className="w-6 h-6 cursor-pointer hover:bg-white/10 rounded p-1 transition-colors"
+                onClick={() => setShowSettingsModal(true)}
+                title="Settings"
+              >
+                <Settings2 
+                  size={24} 
+                  stroke="white" 
+                  strokeWidth={1.2}
+                />
+              </div>
+            </div>
+          </div>
         </div>
-      </form>
+      )}
+
+      {/* Chat Area with proper Figma spacing */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Messages - Matches Figma padding (24px sides) and spacing (32px between groups) */}
+        <div 
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto"
+          style={{
+            padding: "24px 24px 0 24px"
+          }}
+        >
+          <div className="space-y-8">
+            {(enableSessionManagement ? messagesWithDates : messagesWithThinking).map((item) => {
+              // Handle date dividers (only for session management)
+              if (enableSessionManagement && 'type' in item && item.type === 'date-divider') {
+                return (
+                  <div key={item.id}>
+                    <DateDivider date={item.date} />
+                  </div>
+                );
+              }
+              
+              const message = item as Message;
+              
+              return (
+                <ChatMessage
+                  key={message.id}
+                  content={message.content}
+                  timestamp={message.timestamp}
+                  variant={message.sender}
+                  avatar={userAvatar}
+                  isThinking={message.isThinking}
+                  showTaskList={message.showTaskList}
+                  taskSteps={message.taskSteps}
+                  error={message.error}
+                />
+              );
+            })}
+          </div>
+          {/* Bottom spacing for scroll */}
+          <div className="h-6" />
+          {/* Scroll anchor element */}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input Area - Fixed at bottom with proper spacing */}
+        <div 
+          className="flex-shrink-0 flex justify-center border-t"
+          style={{
+            padding: "24px",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            backgroundColor: "transparent"
+          }}
+        >
+          <ChatInput
+            onSend={handleSendMessage}
+            disabled={status === 'submitted' || status === 'streaming'}
+            selectedModel={selectedModel}
+            onModelChange={handleModelSelect}
+            availableModels={availableModels.map(model => ({
+              id: model.id,
+              name: model.name,
+              provider: model.provider
+            }))}
+            error={currentError || undefined}
+          />
+        </div>
+      </div>
+      
+      {/* Docker Install Modal for Initial Setup */}
+      <DockerInstallModal
+        isOpen={showDockerModal}
+        onClose={handleDockerModalClose}
+        onInstallationComplete={handleInstallationComplete}
+        proxyId={validationResult?.frontendProxyId}
+        reason="initial"
+      />
+      
+      {/* Proxy Mismatch Popup */}
+      <ProxyMismatchPopup
+        isOpen={showProxyMismatchPopup}
+        onClose={handleProxyMismatchPopupClose}
+        frontendProxyId={validationResult?.frontendProxyId || ''}
+        serverProxyId={validationResult?.serverProxyId || ''}
+      />
+      
+      {/* Settings Modal */}
+      <ChatSettingsModal
+        isOpen={showSettingsModal}
+        onClose={handleSettingsModalClose}
+        onConfigUpdate={handleSettingsConfigUpdate}
+      />
+      
+      {/* New Chat Confirmation Modal */}
+      <NewChatConfirmationModal
+        isOpen={showNewChatModal}
+        onClose={handleNewChatModalClose}
+        onConfirm={handleCreateNewChat}
+      />
     </div>
   );
 } 

@@ -1,6 +1,11 @@
 import { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
+export interface WebSocket {
+  send: (data: string | ArrayBuffer) => void;
+  close: (code?: number, reason?: string) => void;
+}
+
 /**
  * WebSocket Transport that connects to a Durable Object and uses hibernation
  * to efficiently handle WebSocket connections.

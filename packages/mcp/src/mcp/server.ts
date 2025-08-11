@@ -3,7 +3,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSETransport } from "./sse-transport";
 import { WebSocketTransport } from "./websocket-transport";
 import { Implementation } from "@modelcontextprotocol/sdk/types.js";
-
+import { IMcpServer } from "./mcp-server-interface";
+// Transport factory removed - using direct imports
 const MAXIMUM_MESSAGE_SIZE = 4 * 1024 * 1024; // 4MB
 export const SSE_MESSAGE_ENDPOINT = "/sse/message";
 export const WEBSOCKET_ENDPOINT = "/ws";
@@ -21,13 +22,18 @@ interface WebSocketAttachment {
  * It supports SSE connections for event streaming and WebSocket connections with hibernation.
  */
 export abstract class McpServerDO extends DurableObject {
-  private server: McpServer;
+  private server: IMcpServer;
   private sessions: Map<string, SSETransport | WebSocketTransport> = new Map();
-  
-  constructor(ctx: DurableObjectState, env: any) {
+    
+  constructor(ctx: DurableObjectState, env: any, server?: IMcpServer) {
     super(ctx, env);
-    this.server = new McpServer(this.getImplementation());
-    this.configureServer(this.server);
+
+    if (!server) {
+      // Only call configureServer if we have a real McpServer instance (not a proxy)
+      this.configureServer(this.server = new McpServer(this.getImplementation()));
+    } else {
+      this.server = server;
+    }
   }
 
   /**
@@ -39,6 +45,7 @@ export abstract class McpServerDO extends DurableObject {
   /**  
    * Abstract method that must be implemented by subclasses to configure the server instance.
    * Called after server initialization to set up any additional server configuration, e.g., handlers of incoming RPC calls.
+   * Note: This is only called when using a real McpServer, not when using a proxy
    */
   abstract configureServer(server: McpServer): void;
 
@@ -54,7 +61,15 @@ export abstract class McpServerDO extends DurableObject {
     }
 
     const { readable, writable } = new TransformStream();
-    const transport = new SSETransport(writable.getWriter(), sessionId, new URL(SSE_MESSAGE_ENDPOINT, request.url).toString());
+    
+    // Create message endpoint URL that preserves both proxyId and sessionId
+    const messageEndpointUrl = new URL(SSE_MESSAGE_ENDPOINT, request.url);
+    // Copy all search parameters from the original request to preserve proxyId
+    url.searchParams.forEach((value, key) => {
+      messageEndpointUrl.searchParams.set(key, value);
+    });
+    
+    const transport = new SSETransport(writable.getWriter(), sessionId, messageEndpointUrl.toString());
     this.sessions.set(sessionId, transport);
     this.server.connect(transport);
 
@@ -111,11 +126,6 @@ export abstract class McpServerDO extends DurableObject {
     const transport = new WebSocketTransport(server, sessionId);
     this.sessions.set(sessionId, transport);
     this.server.connect(transport);
-
-    // Start the transport to send initial session data
-    transport.start().catch(error => {
-      console.error("Error starting WebSocket transport:", error);
-    });
 
     // Return the client end of the WebSocket with the MCP subprotocol
     const headers = new Headers();

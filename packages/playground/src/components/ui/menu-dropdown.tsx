@@ -1,12 +1,13 @@
 import React from "react";
+import Image from "next/image";
 import { 
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator
-} from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+} from "./dropdown-menu";
+import { cn } from "../../lib/exports/utils";
 
 export interface MenuOption {
   label: string;
@@ -38,7 +39,7 @@ export const SVGIcon = ({
   className?: string 
 }) => {
   return (
-    <img
+    <Image
       src={src}
       alt={alt}
       width={width ?? 16}

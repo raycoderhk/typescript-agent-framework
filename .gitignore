@@ -61,3 +61,6 @@ out/
 temp/
 tmp/
 .turbo 
+
+data/
+*.db

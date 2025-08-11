@@ -1,6 +1,12 @@
-export * from "./chat-container";
-export * from "./chat-message";
-export * from "./chat-header";
-export * from "./chat-input";
-export * from "./floating-chat-input";
-export * from "./date-divider"; 
+export { ChatContainer } from "./chat-container";
+export { ChatConfiguration } from "./chat-configuration";
+export { ChatHeader } from "./chat-header";
+export { ChatInput } from "./chat-input";
+export { ChatMessage } from "./chat-message";
+export { ChatMessageDemo } from "./chat-message-demo";
+export { ModelSelectorDropdown } from "./model-selector-dropdown";
+export { ErrorStatus } from "./error-status";
+export { TaskList } from "./task-list";
+export { DateDivider } from "./date-divider";
+export { FloatingChatInput } from "./floating-chat-input";
+export { NewChatConfirmationModal } from "./new-chat-confirmation-modal"; 
