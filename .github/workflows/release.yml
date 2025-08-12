@@ -41,12 +41,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm build
-
-      - name: Test packages
-        run: pnpm test
-
       - name: Setup Git User
         run: |
           git config --global user.name "github-actions[bot]"
@@ -75,6 +69,9 @@ jobs:
 
           # Build once more to ensure latest versions are included
           pnpm build
+
+          # Run tests
+          pnpm test
 
           # Manually publish each package with npm
           echo "Publishing packages directly with npm..."
