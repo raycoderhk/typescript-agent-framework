@@ -61,9 +61,11 @@ jobs:
           # Extract versions for release notes
           MCP_VERSION=$(node -p "require('./packages/mcp/package.json').version")
           TEST_UTILS_VERSION=$(node -p "require('./packages/test-utils/package.json').version")
+          AGENT_VERSION=$(node -p "require('./packages/agent/package.json').version")
           PLAYGROUND_VERSION=$(node -p "require('./packages/playground/package.json').version")
           echo "MCP_VERSION=${MCP_VERSION}" >> $GITHUB_OUTPUT
           echo "TEST_UTILS_VERSION=${TEST_UTILS_VERSION}" >> $GITHUB_OUTPUT
+          echo "AGENT_VERSION=${AGENT_VERSION}" >> $GITHUB_OUTPUT
           echo "PLAYGROUND_VERSION=${PLAYGROUND_VERSION}" >> $GITHUB_OUTPUT
           echo "RELEASE_TAG=v${MCP_VERSION}" >> $GITHUB_OUTPUT
 
@@ -76,12 +78,23 @@ jobs:
 
           # Manually publish each package with npm
           echo "Publishing packages directly with npm..."
+
+          # Publish test-utils
           cd packages/test-utils
           npm publish --access public || echo "Failed to publish test-utils, may already exist"
+
+          # Publish mcp
           cd ../mcp
           npm publish --access public || echo "Failed to publish mcp, may already exist"
+
+          # Publish agent
+          cd ../agent
+          npm publish --access public || echo "Failed to publish agent, may already exist"
+
+          # Publish playground (may be first time)
           cd ../playground
           npm publish --access public || echo "Failed to publish playground, may already exist"
+
           cd ../..
 
           # Push the version updates and tags
@@ -99,7 +112,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { RELEASE_TAG, MCP_VERSION, TEST_UTILS_VERSION, PLAYGROUND_VERSION } = process.env;
+            const { RELEASE_TAG, MCP_VERSION, TEST_UTILS_VERSION, AGENT_VERSION, PLAYGROUND_VERSION } = process.env;
 
             // Get the commits since the last tag
             const { data: commits } = await github.rest.repos.listCommits({
@@ -114,6 +127,7 @@ jobs:
 
             - @xava-labs/mcp: ${MCP_VERSION}
             - @xava-labs/test-utils: ${TEST_UTILS_VERSION}
+            - @xava-labs/agent: ${AGENT_VERSION}
             - @xava-labs/playground: ${PLAYGROUND_VERSION}
 
             ## Recent Changes
@@ -137,4 +151,5 @@ jobs:
           RELEASE_TAG: ${{ steps.publish.outputs.RELEASE_TAG }}
           MCP_VERSION: ${{ steps.publish.outputs.MCP_VERSION }}
           TEST_UTILS_VERSION: ${{ steps.publish.outputs.TEST_UTILS_VERSION }}
+          AGENT_VERSION: ${{ steps.publish.outputs.AGENT_VERSION }}
           PLAYGROUND_VERSION: ${{ steps.publish.outputs.PLAYGROUND_VERSION }}

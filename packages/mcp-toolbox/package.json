@@ -1,6 +1,7 @@
 {
   "name": "@xava-labs/mcp-toolbox",
   "version": "1.0.0",
+  "private": true,
   "description": "Hono websocket server with SQLite integration",
   "main": "dist/index.js",
   "scripts": {
