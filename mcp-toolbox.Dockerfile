@@ -34,6 +34,12 @@ RUN cd packages/mcp-toolbox && pnpm build && pnpm run build:bundle
 # Production stage
 FROM node:22-alpine AS production
 
+# Install Python, pip, and Git for uvx support
+RUN apk add --no-cache python3 py3-pip git
+
+# Install uv (which includes uvx) - Updated 2025
+RUN pip3 install --break-system-packages uv
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
@@ -43,6 +49,9 @@ WORKDIR /app
 # Copy only the bundled file and package.json
 COPY --from=builder /workspace/packages/mcp-toolbox/dist/bundle.js ./bundle.js
 COPY --from=builder /workspace/packages/mcp-toolbox/package.json ./package.json
+
+# Copy the SQL.js WASM file that was copied during build
+COPY --from=builder /workspace/packages/mcp-toolbox/dist/sql-wasm.wasm ./sql-wasm.wasm
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R nodejs:nodejs /app
