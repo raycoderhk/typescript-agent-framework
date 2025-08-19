@@ -52,6 +52,44 @@ export function setupServerTools(server: McpServer, repository: TodoRepository) 
     }
   );
 
+  // Get a single todo by ID
+  server.tool(
+    'getTodo',
+    'Get a single todo item by ID',
+    {
+      id: z.string().describe('The ID of the todo to retrieve')
+    },
+    async ({ id }: { id: string }) => {
+      try {
+        const todo = await repository.getTodoById(id);
+        
+        if (!todo) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Todo with ID ${id} not found`
+              }
+            ]
+          };
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Found todo: ${todo.title}`
+            }
+          ],
+          todo
+        };
+      } catch (error) {
+        console.error("Error getting todo:", error);
+        throw new Error(`Failed to get todo: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  );
+
   // Update a todo
   server.tool(
     'updateTodo',
