@@ -187,7 +187,7 @@ export class TodoRepository {
       query += ` LIMIT ? OFFSET ?`;
       params.push(limit, offset);
       
-      const results = await this.ctx.storage.sql.exec(query, params);
+      const results = await this.ctx.storage.sql.exec(query, ...params);
       
       // Convert SQLite results to an array we can work with
       const rows = [];
@@ -237,7 +237,7 @@ export class TodoRepository {
       // Add sorting
       query += ` ORDER BY ${sort_by} ${sort_direction}`;
       
-      const results = await this.ctx.storage.sql.exec(query, params);
+      const results = await this.ctx.storage.sql.exec(query, ...params);
       
       // Convert SQLite results to an array we can work with
       const rows = [];
