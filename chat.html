@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DeepSeek Agent Chat</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #chat { border: 1px solid #ccc; height: 400px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+        #input { width: 80%; padding: 5px; }
+        #send { padding: 5px 15px; }
+        .message { margin: 5px 0; }
+        .user { color: blue; }
+        .agent { color: green; }
+    </style>
+</head>
+<body>
+    <h1>🤖 DeepSeek Agent Chat</h1>
+    <div id="chat"></div>
+    <input type="text" id="input" placeholder="Type your message..." />
+    <button id="send">Send</button>
+
+    <script>
+        const chatDiv = document.getElementById('chat');
+        const inputField = document.getElementById('input');
+        const sendButton = document.getElementById('send');
+
+        async function sendMessage() {
+            const message = inputField.value.trim();
+            if (!message) return;
+
+            // Add user message to chat
+            addMessage('You', message, 'user');
+            inputField.value = '';
+
+            try {
+                const response = await fetch('http://localhost:8787/agent/chat/web-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: [{ role: 'user', content: message }]
+                    })
+                });
+
+                const reader = response.body.getReader();
+                let agentResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = new TextDecoder().decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('0:')) {
+                            const text = JSON.parse(line.substring(2));
+                            agentResponse += text;
+                        }
+                    }
+                }
+
+                addMessage('🤖 DeepSeek Agent', agentResponse, 'agent');
+            } catch (error) {
+                addMessage('❌ Error', 'Failed to connect to agent', 'agent');
+            }
+        }
+
+        function addMessage(sender, text, className) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + className;
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            chatDiv.appendChild(messageDiv);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        inputField.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Welcome message
+        addMessage('🤖 DeepSeek Agent', 'Hello! I can help you manage todo items. Try saying "Create a todo: Learn about AI" or "List my todos"', 'agent');
+    </script>
+</body>
+</html>

@@ -5,7 +5,7 @@ A Cloudflare Workers-based AI agent implementation that uses the @xava-labs/agen
 ## Overview
 
 This project demonstrates:
-- Integration with AI providers (OpenAI or Anthropic)
+- Integration with AI providers (OpenAI, Anthropic, or DeepSeek)
 - Tool-based interactions using the Model Context Protocol (MCP)
 - Durable Object-based state management
 - Streaming responses for real-time interactions
@@ -33,14 +33,14 @@ This project demonstrates:
 ### Prerequisites
 
 - Node.js v18 or later
-- Yarn package manager
+- pnpm package manager
 - Wrangler CLI (Cloudflare Workers)
 
 ### Installation
 
 1. Install dependencies:
 ```bash
-yarn install
+pnpm install
 ```
 
 2. Set up your environment variables by copying the example file:
@@ -50,9 +50,10 @@ cp .dev.vars.example .dev.vars
 
 3. Configure your `.dev.vars` with the following variables:
 ```
-AI_PROVIDER=[anthropic || openai]
+AI_PROVIDER=[anthropic || openai || deepseek]
 ANTHROPIC_API_KEY=[your_anthropic_key]
 OPEN_AI_API_KEY=[your_openai_key]
+DEEPSEEK_API_KEY=[your_deepseek_key]
 ```
 
 ### Development
@@ -66,13 +67,13 @@ The development setup runs three services:
 To start development:
 
 ```bash
-yarn dev
+pnpm dev
 ```
 
 To start the agent by itself:
 
 ```bash
-yarn start
+pnpm start
 ```
 
 ## Configuration Files
@@ -99,7 +100,7 @@ This configuration is automatically serialized into an environment variable duri
 
 The `SimplePromptAgent` class:
 - Extends `AiSdkAgent` from @xava-labs/agent/aisdk
-- Supports both Anthropic and OpenAI language models
+- Supports Anthropic, OpenAI, and DeepSeek language models
 - Integrates with the ToolboxService for todo list management
 - Uses streaming responses for real-time interaction
 
@@ -121,7 +122,7 @@ The `SimplePromptAgent` class:
                                                                ▼            ▼
                                                    ┌────────────────┐ ┌────────────────┐
                                                    │   3rd Party    │ │   AI Provider  │
-                                                   │  MCP Services  │ │OpenAI/Anthropic│
+                                                   │  MCP Services  │ │OpenAI/Anthropic/DeepSeek│
                                                    └────────────────┘ └────────────────┘
 ```
 
@@ -140,7 +141,7 @@ The project uses:
 
 1. Start the development servers:
 ```bash
-yarn dev
+pnpm dev
 ```
 
 2. Access the services:
@@ -154,9 +155,10 @@ yarn dev
 
 Required variables in `.dev.vars`:
 
-- `AI_PROVIDER`: Choose between 'anthropic' or 'openai'
+- `AI_PROVIDER`: Choose between 'anthropic', 'openai', or 'deepseek'
 - `ANTHROPIC_API_KEY`: Your Anthropic API key (if using Anthropic)
 - `OPEN_AI_API_KEY`: Your OpenAI API key (if using OpenAI)
+- `DEEPSEEK_API_KEY`: Your DeepSeek API key (if using DeepSeek)
 - `TOOLS_REGISTRY`: Automatically populated during build from mcp.json
 
 ## Testing
@@ -164,7 +166,7 @@ Required variables in `.dev.vars`:
 Run the test suite:
 
 ```bash
-yarn test
+pnpm test
 ```
 
 ## Deployment
@@ -172,7 +174,7 @@ yarn test
 Deploy to Cloudflare Workers:
 
 ```bash
-yarn deploy
+pnpm deploy
 ```
 
 ## Additional Resources
