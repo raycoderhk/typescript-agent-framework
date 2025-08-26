@@ -9,16 +9,14 @@
  */
 
 import { Hono } from 'hono';
-import { 
-	AgentEnv,
-	applyPermissionlessAgentSessionRouter,
-} from '@xava-labs/agent';
-// Import the ToolsService directly 
-import { ToolboxService } from '@xava-labs/agent/services';
+import { AgentEnv, applyPermissionlessAgentSessionRouter } from '@null-shot/agent';
+// Import the ToolsService directly
+import { ToolboxService } from '@null-shot/agent/services';
 import { LanguageModel } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
-import { AiSdkAgent, AIUISDKMessage } from '@xava-labs/agent/aisdk';
+import { AiSdkAgent, AIUISDKMessage } from '@null-shot/agent/aisdk';
+import mcpConfig from '../mcp.json';
 // Define AI provider type
 type AIProvider = 'anthropic' | 'openai' | 'deepseek';
 
@@ -40,8 +38,8 @@ export class SimplePromptAgent extends AiSdkAgent<EnvWithAgent> {
 		if (!isValidAIProvider(env.AI_PROVIDER)) {
 			throw new Error(`Invalid AI provider: ${env.AI_PROVIDER}. Expected 'anthropic', 'openai', or 'deepseek'.`);
 		}
-		
-		let model : LanguageModel;
+
+		let model: LanguageModel;
 		// This is just an example, ideally you only want ot inlcude models that you plan to use for your agent itself versus multiple models
 		switch (env.AI_PROVIDER) {
 			case 'anthropic':
@@ -68,19 +66,19 @@ export class SimplePromptAgent extends AiSdkAgent<EnvWithAgent> {
 				throw new Error(`Unsupported AI provider: ${env.AI_PROVIDER}`);
 		}
 
-		super(state, env, model, [new ToolboxService(env)]);
+		super(state, env, model, [new ToolboxService(env, mcpConfig)]);
 	}
 
 	async processMessage(sessionId: string, messages: AIUISDKMessage): Promise<Response> {
 		const result = await this.streamText(sessionId, {
 			model: this.model,
 			system: 'You will use tools to help manage and mark off tasks on a todo list.',
-			messages: messages.messages, 
+			messages: messages.messages,
 			maxSteps: 10,
 			experimental_toolCallStreaming: true,
 			onError: (error) => {
 				console.error('Error processing message', error);
-			}
+			},
 		});
 
 		return result.toDataStreamResponse();
@@ -92,5 +90,5 @@ export default {
 	async fetch(request: Request, env: EnvWithAgent, ctx: ExecutionContext): Promise<Response> {
 		// Bootstrap the agent worker with the namespace
 		return app.fetch(request, env, ctx);
-	}
+	},
 };

@@ -1,6 +1,6 @@
 {
-  "name": "@xava-labs/playground",
-  "version": "0.2.2",
+  "name": "@null-shot/playground",
+  "version": "0.2.3",
   "private": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -19,7 +19,8 @@
   ],
   "scripts": {
     "dev": "wrangler dev -c ../mcp-proxy/wrangler.jsonc --port 6050 & next dev",
-    "build": "next build",
+    "build": "pnpm run build:lib",
+    "build:app": "next build",
     "build:lib": "tsup --config tsup.config.ts --tsconfig tsconfig.lib.json",
     "start": "next start",
     "lint": "next lint --max-warnings 0",
@@ -29,7 +30,7 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && wrangler dev -c ./wrangler.jsonc -c ../mcp-proxy/wrangler.jsonc",
     "codegen": "wrangler types --env-interface CloudflareEnv env.d.ts",
-    "prepublishOnly": "npm run build:lib"
+    "prepublishOnly": "pnpm run build:lib"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
@@ -43,7 +44,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.2.0",
-    "@xava-labs/mcp": "workspace:*",
+    "@null-shot/mcp": "workspace:*",
     "agents": "^0.0.75",
     "ai": "^4.3.16",
     "class-variance-authority": "^0.7.1",
@@ -51,7 +52,7 @@
     "date-fns": "^4.1.0",
     "fuse.js": "^7.1.0",
     "lucide-react": "^0.503.0",
-    "next": "15.2.0",
+    "next": "15.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.2.0",
@@ -65,7 +66,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
+    "eslint": "^9.29.0",
     "eslint-config-next": "15.3.1",
     "minimatch": "^9.0.5",
     "tailwindcss": "^4",

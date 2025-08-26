@@ -1,4 +1,10 @@
-# @xava-labs/mcp
+# @null-shot/mcp
+
+## 0.3.0
+
+### Minor Changes
+
+- 4af1485: New repo, agents dependency bumps, cli tool
 
 ## 0.2.1
 

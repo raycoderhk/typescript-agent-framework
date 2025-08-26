@@ -1,6 +1,6 @@
 {
-	"name": "@xava-labs/mcp",
-	"version": "0.2.1",
+	"name": "@null-shot/mcp",
+	"version": "0.3.0",
 	"description": "Model Context Protocol (MCP) server implementation for Cloudflare Workers",
 	"type": "module",
 	"main": "dist/index.js",
@@ -15,6 +15,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
+		"preinstall": "mkdir -p dist",
 		"prepare": "npm run build",
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
@@ -53,7 +54,7 @@
 		"wrangler": "^4.9.1"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.17.2",
+		"@modelcontextprotocol/sdk": "catalog:",
 		"hono": "^4.7.6"
 	}
 }

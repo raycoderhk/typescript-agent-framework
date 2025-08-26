@@ -1,5 +1,5 @@
 {
-  "name": "@xava-labs/mcp-toolbox",
+  "name": "@null-shot/mcp-toolbox",
   "version": "1.0.0",
   "private": true,
   "description": "Hono websocket server with SQLite integration",
@@ -8,7 +8,7 @@
     "dev": "tsx src/index.ts",
     "prebuild": "cd ../mcp && pnpm run build",
     "build": "pnpm exec tsc",
-    "build:bundle": "node -e \"require('fs').copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'dist/sql-wasm.wasm')\" && esbuild dist/index.js --bundle --platform=node --target=node18 --outfile=dist/bundle.js",
+    "build:bundle": "node -e \"require('fs').copyFileSync('node_modules/sql.js/dist/sql-wasm.wasm', 'dist/sql-wasm.wasm')\" && esbuild dist/index.js --bundle --platform=node --target=node20 --external:cloudflare:* --external:@cloudflare/* --outfile=dist/bundle.js",
     "start": "node dist/index.js",
     "start:bundle": "node dist/bundle.js",
     "send": "tsx send-message.ts",
@@ -25,16 +25,16 @@
     "ws": "^8.18.0",
     "zod": "^3.22.4",
     "@modelcontextprotocol/sdk": "^1.13.0",
-    "@xava-labs/mcp": "workspace:*"
+    "@null-shot/mcp": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.5.4",
+    "@types/node": "catalog:",
     "@types/ws": "^8.5.12",
     "@types/sql.js": "^1.4.9",
-    "esbuild": "^0.25.6",
+    "esbuild": "catalog:",
     "tsx": "^4.19.0",
-    "typescript": "^5.8.3",
-    "vitest": "^2.0.5",
-    "@vitest/ui": "^2.0.5"
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "@vitest/ui": "catalog:"
   }
 }
